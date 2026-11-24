@@ -12,6 +12,7 @@ const previewRecipe = vi.hoisted(() => vi.fn());
 const createRecipe = vi.hoisted(() => vi.fn());
 const updateRecipe = vi.hoisted(() => vi.fn());
 const fetchRecipeVersions = vi.hoisted(() => vi.fn());
+const promoteFood = vi.hoisted(() => vi.fn());
 const fetchFood = vi.hoisted(() => vi.fn(async () => ({ id: 9, name: 'Leite', portions: [], basis: 'g' })));
 vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/nutrition-api')>()),
@@ -20,6 +21,7 @@ vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   updateRecipe,
   fetchRecipeVersions,
   fetchFood,
+  promoteFood,
 }));
 vi.mock('./FoodSearch', () => ({
   FoodSearch: (p: { excludeRecipes?: boolean; onSelect: (i: unknown) => void; onRegister?: (t: string) => void }) =>
@@ -69,6 +71,7 @@ beforeEach(() => {
   previewRecipe.mockReset();
   createRecipe.mockReset();
   updateRecipe.mockReset();
+  promoteFood.mockReset();
   fetchRecipeVersions.mockReset();
   fetchRecipeVersions.mockResolvedValue({ items: [] });
 });
@@ -392,5 +395,99 @@ describe('RecipeEditor', () => {
     await mount({ onCancel });
     await click('Cancelar');
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  const KEY = 'muscle_fit:receita-rascunho:7:new';
+  describe('rascunho no aparelho', () => {
+    beforeEach(() => window.localStorage.clear());
+
+    it('grava com debounce só os campos do formulário, oferece retomar e apaga ao salvar', async () => {
+      createRecipe.mockResolvedValue({ id: 1 });
+      await mount({ userId: 7 });
+      await type(byLabel('Nome da receita'), 'Bolo');
+      expect(window.localStorage.getItem(KEY)).toBeNull(); // ainda no debounce
+      await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
+      const salvo = JSON.parse(window.localStorage.getItem(KEY)!);
+      expect(Object.keys(salvo).sort()).toEqual(['finalWeight', 'instructions', 'name', 'overrides', 'rows']);
+      expect(salvo.name).toBe('Bolo');
+      await act(async () => root?.unmount());
+      await mount({ userId: 7 });
+      expect(host.textContent).toContain('Retomar rascunho');
+      await click('Retomar rascunho');
+      expect((byLabel('Nome da receita') as HTMLInputElement).value).toBe('Bolo');
+      await click('add-farinha');
+      await type(byLabel('Quantidade'), '100');
+      await type(byLabel('Peso final pronto'), '90');
+      await click('Salvar receita');
+      await flush();
+      expect(window.localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('descartar rascunho apaga; sem userId não grava', async () => {
+      window.localStorage.setItem(KEY, JSON.stringify({ name: 'X', instructions: '', finalWeight: '', overrides: {}, rows: [] }));
+      await mount({ userId: 7 });
+      await click('Descartar rascunho');
+      expect(window.localStorage.getItem(KEY)).toBeNull();
+      expect(host.textContent).not.toContain('Retomar rascunho');
+    });
+
+    it('falha do storage não quebra a tela', async () => {
+      const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('bloqueado'); });
+      const spy2 = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('cheio'); });
+      await mount({ userId: 7 });
+      await type(byLabel('Nome da receita'), 'Bolo');
+      await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
+      expect((byLabel('Nome da receita') as HTMLInputElement).value).toBe('Bolo');
+      spy.mockRestore();
+      spy2.mockRestore();
+    });
+  });
+
+  describe('receita pública', () => {
+    const publica = (permissions: Record<string, boolean>, over = {}) =>
+      ({ id: 5, name: 'Sopa', is_public: true, is_own: false, permissions, recipe: { ingredients: [], final_weight_g: 100, instructions: 'ferva' }, ...over }) as never;
+
+    it('sem can_edit abre em leitura, sem salvar, com Duplicar para mim', async () => {
+      const onDuplicate = vi.fn();
+      await mount({ recipe: publica({ can_edit: false, can_promote: false }), onDuplicate, userId: 7 });
+      expect(host.textContent).toContain('modo leitura');
+      const btns = [...host.querySelectorAll('button')].map((b) => b.textContent);
+      expect(btns).not.toContain('Salvar receita');
+      expect(btns).not.toContain('Calcular');
+      expect(host.textContent).not.toContain('add-farinha');
+      expect((byLabel('Nome da receita') as HTMLInputElement).closest('fieldset')!.disabled).toBe(true);
+      await click('Duplicar para mim');
+      expect(onDuplicate).toHaveBeenCalled();
+    });
+
+    it('com can_edit a pública é editável', async () => {
+      await mount({ recipe: publica({ can_edit: true, can_promote: false }) });
+      expect(host.textContent).toContain('Salvar receita');
+      expect(host.textContent).not.toContain('modo leitura');
+    });
+
+    it('Publicar só na privada com can_promote, com confirmação e erros por item', async () => {
+      promoteFood.mockRejectedValue(
+        new ApiError('x', 422, { code: 'food_not_publishable', message: 'Faltam requisitos.', errors: [{ code: 'missing_x', label: 'Falta o peso' }] }),
+      );
+      const onPublished = vi.fn();
+      await mount({ recipe: publica({ can_edit: true, can_promote: true }, { is_public: false, is_own: true }), onPublished });
+      expect(promoteFood).not.toHaveBeenCalled();
+      await click('Publicar');
+      await click('Confirmar publicação');
+      await flush();
+      expect(promoteFood).toHaveBeenCalledWith(5);
+      expect(host.textContent).toContain('Falta o peso');
+      expect(onPublished).not.toHaveBeenCalled();
+      promoteFood.mockResolvedValue({});
+      await click('Confirmar publicação');
+      await flush();
+      expect(onPublished).toHaveBeenCalled();
+    });
+
+    it('sem can_promote não mostra Publicar', async () => {
+      await mount({ recipe: publica({ can_edit: true, can_promote: false }, { is_public: false, is_own: true }) });
+      expect([...host.querySelectorAll('button')].map((b) => b.textContent)).not.toContain('Publicar');
+    });
   });
 });

@@ -30,9 +30,13 @@ describe('cliente de receitas', () => {
     await fetchRecipes();
     await fetchRecipe(7);
     await deleteFood(7);
+    await fetchRecipes('public');
+    await fetchRecipes('favorites');
     expect(apiFetch).toHaveBeenNthCalledWith(1, '/nutrition/recipes');
     expect(apiFetch).toHaveBeenNthCalledWith(2, '/nutrition/recipes/7');
     expect(apiFetch).toHaveBeenNthCalledWith(3, '/nutrition/foods/7', { method: 'DELETE' });
+    expect(apiFetch).toHaveBeenNthCalledWith(4, '/nutrition/recipes?scope=public');
+    expect(apiFetch).toHaveBeenNthCalledWith(5, '/nutrition/recipes?scope=favorites');
   });
 
   it('atualizar com refresh_ingredients, versões e duplicar', async () => {

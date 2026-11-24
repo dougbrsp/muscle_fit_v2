@@ -121,6 +121,7 @@ class FakeFoodsDB:
                 f"{recipes.INGREDIENTS_OF_VERSION_SQL} FOR UPDATE": "ingredients",
                 recipes.VERSIONS_LIST_SQL: "versions", recipes.INSERT_VERSION_SQL: "ins_version", recipes.INGREDIENTS_OF_VERSION_SQL: "ingredients",
                 recipes.INSERT_INGREDIENT_SQL: "ins_ingredient", recipes.LIST_SQL: "list",
+                recipes.LIST_PUBLIC_SQL: "list_public", recipes.LIST_FAVORITES_SQL: "list_favorites",
             }
             for n in range(1, 41):
                 sqls[meals.recipe_versions_sql(n)] = "latest_ids"
@@ -336,9 +337,20 @@ class FakeCursor:
                 if v["food_id"] in p and (v["food_id"] not in ultimas or v["version"] > ultimas[v["food_id"]]["version"]):
                     ultimas[v["food_id"]] = v
             self._rows = list(ultimas.values())
-        elif tipo == "list":
-            fonte, dono = p
-            achados = [r for r in db.foods.values() if r["source"] == fonte and r["owner_user_id"] == dono and r["is_active"]]
+        elif tipo in ("list", "list_public", "list_favorites"):
+            fonte = p[0]
+            favoritas = {f["food_id"] for f in db.favorites if tipo == "list_favorites" and f["user_id"] == p[1]}
+
+            def casa(r: dict[str, Any]) -> bool:
+                if r["source"] != fonte or not r["is_active"]:
+                    return False
+                if tipo == "list":
+                    return r["owner_user_id"] == p[1]
+                if tipo == "list_public":
+                    return r["owner_user_id"] is None
+                return r["id"] in favoritas and r["owner_user_id"] in (None, p[2])
+
+            achados = [r for r in db.foods.values() if casa(r)]
             self._rows = [_publico(r) for r in sorted(achados, key=lambda r: (r["_normalized"], r["id"]))]
 
     def execute(self, sql: str, params: Any = None) -> None:  # noqa: C901 - despacho por statement

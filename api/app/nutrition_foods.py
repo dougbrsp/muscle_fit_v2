@@ -271,7 +271,7 @@ def food_public(row: dict[str, Any], identity: Identity, permissoes: EffectivePe
             "can_edit": can_edit_food(identity, permissoes, row),
             "can_delete": can_delete_food(identity, permissoes, row),
             "can_add_portion": can_add_portion(identity, row),
-            "can_promote": can_promote_food(permissoes, row) and not catalog.is_recipe_source(row.get("source")),
+            "can_promote": can_promote_food(permissoes, row),
         },
         "created_at": _iso(row.get("created_at")),
         "updated_at": _iso(row.get("updated_at")),
@@ -633,10 +633,17 @@ def promote_food(request: Request, food_id: int, identity: Identity = Depends(re
         with conn.cursor() as cur:
             require_food_tables(cur)
             linha = _fetch_food(cur, food_id, identity, permissoes)
-            if catalog.is_recipe_source(linha.get("source")):
-                raise _error(409, "recipe_promote_not_supported", nutrition_labels.limitation_label("recipe_promote_not_supported"))
             if not can_promote_food(permissoes, linha):
                 raise _error(409, "food_already_public", "O alimento já é público.")
+            if catalog.is_recipe_source(linha.get("source")):
+                from . import nutrition_recipes  # import tardio: o módulo de receitas importa este
+
+                codigos, erros = nutrition_recipes.promotion_blockers(cur, linha)
+                if codigos:  # a rota só devolve o que o motor decidiu (`recipe.publish_blockers`)
+                    raise HTTPException(status_code=422, detail={
+                        "error": codigos[0], "code": codigos[0], "message": nutrition_labels.limitation_label(codigos[0]),
+                        "errors": nutrition_labels.limitation_items([*codigos, *erros]),
+                    })
             dono = int(linha["owner_user_id"])
             cur.execute(PROMOTE_FOOD_SQL, (int(food_id), dono))
             if int(cur.rowcount or 0) != 1:

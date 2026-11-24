@@ -1,6 +1,6 @@
 # ADR 0035: Receitas como alimento composto, primeira fatia do backend (issue #286)
 
-- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`; fatia 2, parte 1 (lote 40) na branch `feat/receitas-edicao-l40`, sem commit. Não promovida a produção.
+- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`; fatia 2, parte 1 (lote 40) na branch `feat/receitas-edicao-l40`, sem commit; fatia 2, parte 2 (lote 46) na branch `feat/receitas-publicas-l46`, sem commit. Não promovida a produção.
 - **Data**: 2026-11-23
 - **Relaciona-se a**: [ADR 0034](0034-prioridade-do-dia-no-diario-da-nutricao.md) (formato e seções deste registro); [ADR 0015](0015-progressao-fonte-unica-no-motor.md) (a regra de ter um único dono por cálculo, aplicada aqui aos nutrientes da receita).
 
@@ -46,7 +46,7 @@
    - `GET /nutrition/recipes/{food_id}`: lê a receita atual.
    - `PUT /nutrition/recipes/{food_id}`: grava uma versão nova. Antes da trava, a receita é conferida sem trava (existência, estado, visibilidade e posse); depois a linha do alimento é lida com trava (`FOR UPDATE`) e a mesma conferência é refeita sobre a linha travada. A maior versão também é lida com trava, para que duas gravações simultâneas não usem o mesmo número. Se a inserção ainda violar a unicidade `(food_id, version)`, a resposta é 409 `recipe_version_conflict` (texto no vocabulário), não 500. No corpo, campo de porção ausente preserva a porção gravada; nulo explícito a apaga.
    - `GET /nutrition/recipes`: lista as receitas do próprio usuário.
-   - Três formatos de erro: 422 de validação do corpo (formato padrão do FastAPI); 422 tipado `recipe_*`, com rótulo no vocabulário de `api/app/domain/nutrition/labels.py`; 400 com código `invalid_food`. Posse estrita: só o dono lê (`GET`) e edita (`PUT`); para qualquer outro usuário, inclusive quem administra o catálogo, a resposta é 404 `food_not_found`, igual à de receita inexistente (não há 403 nas rotas de receita). Quando a receita puder ser pública (segunda fatia), a regra de leitura será revista. Números do corpo são estritos: booleano e texto numérico são recusados com 422 em quantidade, peso final, porção e substituições (nulo continua aceito nas substituições); a porção tem teto derivado de `RECIPE_FINAL_WEIGHT_MAX_G`. Ids do alimento e da porção no corpo também são estritos (booleano e texto recusados). Erros de quantidade do ingrediente (códigos do dono do diário com sufixo do índice) têm rótulo em português, `Ingrediente <n>: ...`, com `<n>` a partir de 1 (lote 37b); o `field` e o `index` do erro estruturado seguem a partir de 0. As limitações dos ingredientes (ex.: densidade gramas↔ml que `meal_math.resolve_amount` devolve) vêm no campo `limitations` da prévia e da receita, em criar, ler e editar (lote 37b). Na leitura, a lista sai dos `limitation_codes` gravados; versão sem essa chave cai nas limitações do cálculo, sem as dos ingredientes.
+   - Três formatos de erro: 422 de validação do corpo (formato padrão do FastAPI); 422 tipado `recipe_*`, com rótulo no vocabulário de `api/app/domain/nutrition/labels.py`; 400 com código `invalid_food`. Posse estrita da receita privada: só o dono lê (`GET`) e edita (`PUT`); para qualquer outro usuário, inclusive quem administra o catálogo, a resposta é 404 `food_not_found`, igual à de receita inexistente (sem 403 para receita privada alheia). **Atualizado no lote 46:** receita PÚBLICA é lida por todos (`can_view_recipe`); o `PUT` de receita pública por quem não administra o catálogo responde 403 `recipe_public_edit_forbidden` (`api/app/nutrition_recipes.py`, `ERR_PUBLIC_EDIT_FORBIDDEN_STATUS = 403`). Números do corpo são estritos: booleano e texto numérico são recusados com 422 em quantidade, peso final, porção e substituições (nulo continua aceito nas substituições); a porção tem teto derivado de `RECIPE_FINAL_WEIGHT_MAX_G`. Ids do alimento e da porção no corpo também são estritos (booleano e texto recusados). Erros de quantidade do ingrediente (códigos do dono do diário com sufixo do índice) têm rótulo em português, `Ingrediente <n>: ...`, com `<n>` a partir de 1 (lote 37b); o `field` e o `index` do erro estruturado seguem a partir de 0. As limitações dos ingredientes (ex.: densidade gramas↔ml que `meal_math.resolve_amount` devolve) vêm no campo `limitations` da prévia e da receita, em criar, ler e editar (lote 37b). Na leitura, a lista sai dos `limitation_codes` gravados; versão sem essa chave cai nas limitações do cálculo, sem as dos ingredientes.
    - Sem a migração 125, as rotas de receita respondem 503 citando a 125; o resto da API segue.
 8. **Integração com o cadastro comum.**
    - `PUT /nutrition/foods/{id}` de uma receita responde 409 `food_is_recipe` (a edição é pela tela de receita).
@@ -83,8 +83,8 @@ Fatia 1 das telas, sobre o backend do lote 37c (branch `feat/receitas-telas-l38`
   - cliente `previewRecipe`, `createRecipe`, `fetchRecipes`, `fetchRecipe` e `updateRecipe` em `frontend/src/lib/nutrition-api.ts`;
   - busca de ingrediente com `excludeRecipes` (`frontend/src/components/nutrition/FoodSearch.tsx`), para que receita não entre como ingrediente.
 - **Regra das telas:** nenhuma conta no frontend. Totais, valores por 100 g, rendimento, energia e avisos vêm da resposta do backend; o código do frontend só converte texto em número.
-- **Saída com alterações:** pede confirmação ao cancelar o editor e ao fechar ou recarregar a aba (`beforeunload`). Trocar de rota pela subnavegação ainda não pede confirmação.
-- **Ficou para a fatia 2** (feito no lote 40: versões, "atualizar ingredientes e recalcular", duplicar pelo dono e cadastro de ingrediente novo sem sair da receita; o resto segue): publicar e filtros minhas, públicas e favoritas; rascunho; confirmação ao trocar de rota com alterações.
+- **Saída com alterações:** pede confirmação ao cancelar o editor, ao fechar ou recarregar a aba (`beforeunload`) e ao clicar em link interno (lote 40, ver Limites). Trocar de rota pela subnavegação é link interno, então também pede confirmação.
+- **Ficou para a fatia 2** (feito no lote 40: versões, "atualizar ingredientes e recalcular", duplicar pelo dono e cadastro de ingrediente novo sem sair da receita; o resto segue): publicar e filtros minhas, públicas e favoritas; rascunho (publicar, filtros e rascunho fechados no lote 46).
 - **Dependência:** a tela só funciona com a migração 125 aplicada; sem ela, as rotas respondem 503.
 
 ## Ajustes do lote 39 (issue #291 e sobras #290)
@@ -116,6 +116,43 @@ Impacto em produção: nenhum dado. 0 receitas em produção em 23/11/2026 (medi
 
 Verificação: este ADR não registra execução. Testes unitários, guarda de fontes e tela no navegador do lote 40 não foram rodados nesta tarefa.
 
+## Lote 46 — publicação e receita pública (issue #286, fatia 2 parte 2)
+
+Branch `feat/receitas-publicas-l46`, sem commit. Não verificado: execução de testes (só roda no CI para integração) e navegador.
+
+Escolhas do usuário:
+
+- **Publicação como a dos alimentos** (23/11/2026): só quem administra o catálogo promove (`POST /nutrition/foods/{id}/promote`, `admin.catalogos:editar`). Antes, a receita era recusada com 409 `recipe_promote_not_supported`; agora passa pelo motor.
+- **Modo de preparo público** (24/11/2026): quando a receita é pública, o modo de preparo é visível a todos. Por isso `can_view_recipe` vale também para o modo de preparo.
+
+Regras (dono: `api/app/domain/nutrition/recipe.py`):
+
+- **Requisitos de publicação** (`publish_blockers`): nome, peso final positivo, ao menos um ingrediente e valores por 100 g válidos pela regra do catálogo com `RECIPE_REQUIRED_PER_100_FIELDS` (só energia). Códigos `recipe_publish_name_required`, `recipe_publish_final_weight_required`, `recipe_publish_no_ingredients`, `recipe_publish_invalid_values`; erro vira 422 tipado, com rótulo em `labels.py`.
+- **Quem lê** (`can_view_recipe`): a pública (dona NULL) ou a própria. Receita privada alheia é 404 `food_not_found`, inclusive para quem administra o catálogo.
+- **Quem edita** (`can_edit_recipe`): privada só pelo dono; pública só por quem administra o catálogo (`administers_public_catalog(..., "editar")`). O autor original sem a concessão não edita. Quem não pode editar a pública recebe 403 `recipe_public_edit_forbidden` (`ERR_PUBLIC_EDIT_FORBIDDEN_STATUS = 403`): a pública existe para todos, então não há o que esconder.
+- **Quem duplica**: a pública ou a própria; a cópia é sempre privada do chamador, com `copy_name`.
+- **Filtros** (`GET /nutrition/recipes?scope=`): `mine` (padrão), `public`, `favorites`. Sem ingredientes na lista.
+- **Ingrediente privado do autor numa receita pública**: outros usuários veem só o snapshot gravado; `catalog_status` sai `unavailable` para quem não é o autor. Nenhum outro usuário acessa o alimento privado do autor.
+- **Rascunho**: só no aparelho (`localStorage`, chave `muscle_fit:receita-rascunho:{userId}:{recipeId|new}`, em `RecipeEditor.tsx`). Não vai ao servidor, não é compartilhado entre aparelhos e não existe em modo leitura.
+
+Alternativas consideradas:
+
+- **Rascunho no servidor.** Recusado: exigiria tabela nova e sincronização para um ganho pequeno; o rascunho é só o estado do formulário.
+- **Permitir edição de pública pelo autor original.** Recusado: a receita pública é do catálogo; quem a publica perde a edição quando sai da administração.
+- **Publicar só com o modo de preparo privado.** Recusado pelo usuário em 24/11/2026.
+
+Trade-offs:
+
+- Ganha: uma só regra de publicação, para alimento e receita, no motor de `promote`; a tela não decide nada.
+- Paga: pela regra de leitura, o administrador vê a linha de alimento privado de outro usuário (já era o comportamento dos alimentos privados); ele não lê o modo de preparo nem edita a receita.
+
+Consequências:
+
+- **Contrato.** `GET /nutrition/recipes?scope=public|favorites`, `POST /nutrition/recipes/{food_id}/duplicate` para pública, `PUT` com 403 para pública alheia, `POST /nutrition/foods/{id}/promote` aceita receita.
+- **Dados.** Sem migração nova nesta parte. Publicar altera a linha de `food_items` (`owner_user_id` vira NULL) e as porções.
+
+Impacto em produção: 0 receitas em produção (medido em 23/11/2026, lote 37c; receitas ainda não promovidas). Nada muda para alimentos comuns, exceto que `can_promote_food` (em `api/app/nutrition_access.py`) passa a valer para linha de receita. Nenhum dado existente muda de forma.
+
 ## Impacto em produção
 
 Lote 38: só tela nova; nenhuma mudança de backend nem de migração. Os números de produção são os medidos acima para o lote 37c.
@@ -128,17 +165,14 @@ Conferência depois do deploy (na promoção, só leitura): (b) as duas tabelas 
 
 ## Limites
 
-- **Fica para a parte 2 da fatia 2:**
-  - promover a pública, com as regras de receita pública e a privacidade do modo de preparo;
-  - duplicar receita pública;
-  - filtros minhas, públicas e favoritas;
-  - rascunho retomável.
+- **Fechado no lote 46 (parte 2 da fatia 2):** promover a pública (com o modo de preparo público); duplicar receita pública; filtros minhas, públicas e favoritas; rascunho retomável (só no aparelho).
+- **Confirmação ao sair com alterações (atualizado no lote 46):** existe no código do checkout (`frontend/src/components/nutrition/RecipeEditor.tsx`: `beforeunload` por `dirty`, linhas 178 a 185; clique em link interno com alterações por listener de `click` em captura no `document`, linhas 187 a 206; cancelar abre "Sair sem salvar?", linhas 308 e 641). Conferido por busca no código; não verificado no navegador.
 - Feito no lote 40 (seção própria): histórico de versões, atualizar ingredientes e recalcular, e duplicar pelo dono.
 - O diário soma seis nutrientes. Açúcares, gordura saturada e gordura trans da receita ficam nos valores por 100 g e no snapshot, sem entrar no total do diário nesta fatia.
 - Risco residual: violação da unicidade de `(food_id, version)`, mitigada por trava de linha e, em último caso, respondida com 409; a trava sob concorrência real não foi medida.
 - Corpo com número infinito devolvia 500 por um problema geral do app na serialização do erro de validação; corrigido no lote 39 (issue #291): agora 422, e o valor não chega ao motor.
 - A integração não roda localmente; só o CI a executa.
-- Posse estrita: quem administra o catálogo não lê nem edita receita privada de outro usuário; a resposta é 404 `food_not_found`, sem 403 (ver Decisão 7).
+- Posse estrita da receita privada: quem administra o catálogo não lê nem edita receita privada de outro usuário; a resposta é 404 `food_not_found`, sem 403 (ver Decisão 7). Receita pública (lote 46): lida por todos; edição só por quem administra o catálogo (403 `recipe_public_edit_forbidden` para os demais).
 - Linha de alimento: quem administra o catálogo ainda vê, pela busca de alimentos privados e por `GET /nutrition/foods/{id}`, a linha de alimento da receita de outro usuário (nome e valores por 100 g, sem ingredientes, versões nem modo de preparo). É a regra já existente dos alimentos privados; essa pessoa não pode editar, excluir nem promover a receita.
 - Erros de quantidade do ingrediente: o número na mensagem (`Ingrediente <n>`) começa em 1 (lote 37b); o `index` do erro estruturado começa em 0.
 - Receita cujo ingrediente não informa um macro aparece na prévia com o campo incompleto e é salva com esse campo nulo (lote 37c). Sem energia, 400 `invalid_food`; a substituição manual do campo continua disponível.

@@ -8,7 +8,7 @@ import { FoodSearch } from './FoodSearch';
 import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { NutritionLimitations } from './NutritionLimitations';
 import { RDC429_FIELDS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
-import { createRecipe, fetchFood, fetchRecipeVersions, foodKeys, nutritionErrorInfo, previewRecipe, recipeKeys, updateRecipe } from '@/lib/nutrition-api';
+import { createRecipe, fetchFood, fetchRecipeVersions, foodKeys, nutritionErrorInfo, previewRecipe, promoteFood, recipeKeys, updateRecipe } from '@/lib/nutrition-api';
 import { unitUsesPortion } from '@/lib/nutrition-meal-form';
 import type {
   RecipeCatalogStatus,
@@ -32,7 +32,35 @@ type Props = {
   recipe: RecipeDetail | null;
   onSaved: (recipe: RecipeDetail) => void;
   onCancel: () => void;
+  /** Id do usuário logado: chave do rascunho no aparelho; sem ele não há rascunho. */
+  userId?: number;
+  /** Receita pública em leitura: "Duplicar para mim". */
+  onDuplicate?: () => void;
+  duplicating?: boolean;
+  /** Depois de "Publicar" com sucesso. */
+  onPublished?: () => void;
 };
+
+type Draft = { name: string; instructions: string; finalWeight: string; overrides: Record<string, string>; rows: Row[] };
+const DRAFT_DEBOUNCE_MS = 600;
+const draftKey = (userId: number, recipe: RecipeDetail | null) => `muscle_fit:receita-rascunho:${userId}:${recipe?.id ?? 'new'}`;
+// Storage indisponível ou cheio não pode quebrar a tela: toda operação engole o erro.
+function readDraft(key: string): Draft | null {
+  try {
+    const d = JSON.parse(window.localStorage.getItem(key) ?? 'null') as Draft | null;
+    return d && typeof d.name === 'string' && Array.isArray(d.rows) && d.overrides && typeof d.overrides === 'object' ? d : null;
+  } catch {
+    return null;
+  }
+}
+function writeDraft(key: string, d: Draft | null) {
+  try {
+    if (d) window.localStorage.setItem(key, JSON.stringify(d));
+    else window.localStorage.removeItem(key);
+  } catch {
+    /* sem rascunho; o formulário segue funcionando */
+  }
+}
 
 const text = (n: number | null | undefined) => (n == null ? '' : String(n));
 // Texto digitado -> número da API (vírgula decimal); vazio ou inválido vira `null`/NaN e a API acusa.
@@ -88,8 +116,15 @@ function initialState(recipe: RecipeDetail | null) {
   };
 }
 
-export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
+export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, duplicating, onPublished }: Props) {
   const initial = useMemo(() => initialState(recipe), [recipe]);
+  // Permissão vem da API (`permissions.can_edit`); sem o campo, edita como antes.
+  const readOnly = recipe != null && recipe.permissions?.can_edit === false;
+  const canPublish = recipe != null && !recipe.is_public && recipe.permissions?.can_promote === true;
+  const storageKey = userId != null && !readOnly ? draftKey(userId, recipe) : null;
+  const [draft, setDraft] = useState<Draft | null>(() => (storageKey ? readDraft(storageKey) : null));
+  const [confirmPublish, setConfirmPublish] = useState(false);
+  const publishMutation = useMutation({ mutationFn: () => promoteFood(recipe!.id), onSuccess: () => onPublished?.() });
   const [name, setName] = useState(initial.name);
   const [instructions, setInstructions] = useState(initial.instructions);
   const [finalWeight, setFinalWeight] = useState(initial.finalWeight);
@@ -113,6 +148,31 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
 
   const snapshot = (s: { name: string; instructions: string; finalWeight: string; overrides: unknown; rows: unknown }) => JSON.stringify(s);
   const dirty = snapshot({ name, instructions, finalWeight, overrides, rows }) !== snapshot(initial);
+
+  const current = { name, instructions, finalWeight, overrides, rows };
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  // Rascunho no aparelho: só dados do formulário, gravado com debounce enquanto há alterações.
+  useEffect(() => {
+    if (!dirty || !storageKey) return;
+    const t = setTimeout(() => writeDraft(storageKey, currentRef.current), DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [dirty, storageKey, name, instructions, finalWeight, overrides, rows]);
+  function descartarRascunho() {
+    if (storageKey) writeDraft(storageKey, null);
+    setDraft(null);
+  }
+  function retomarRascunho() {
+    if (!draft) return;
+    setName(draft.name);
+    setInstructions(draft.instructions ?? '');
+    setFinalWeight(draft.finalWeight ?? '');
+    setOverrides(draft.overrides);
+    setRows(draft.rows);
+    nextKey.current = Math.max(nextKey.current, ...draft.rows.map((r) => r.key + 1));
+    setStale(true);
+    setDraft(null);
+  }
 
   useEffect(() => {
     if (!dirty) return;
@@ -150,6 +210,7 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
     setLinkPendente(null);
     if (!a) return;
     liberaLink.current = true;
+    descartarRascunho();
     a.click();
   }
 
@@ -188,7 +249,10 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
   const saveMutation = useMutation({
     mutationFn: (refresh?: boolean) =>
       recipe ? updateRecipe(recipe.id, refresh ? { ...payload(), refresh_ingredients: true } : payload()) : createRecipe(payload()),
-    onSuccess: onSaved,
+    onSuccess: (saved) => {
+      descartarRascunho();
+      onSaved(saved);
+    },
   });
 
   const error = saveMutation.error ?? previewMutation.error;
@@ -251,8 +315,62 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
       <Stack gap="md">
         <Title order={3} c={BRAND.textPrimary}>
-          {recipe ? 'Editar receita' : 'Nova receita'}
+          {readOnly ? 'Receita pública' : recipe ? 'Editar receita' : 'Nova receita'}
         </Title>
+
+        {readOnly && (
+          <Alert color="blue" data-testid="modo-leitura">
+            Esta receita é do catálogo e está em modo leitura. Duplique para ter a sua própria cópia editável.
+          </Alert>
+        )}
+
+        {draft && !dirty && (
+          <Alert color="blue" title="Rascunho neste aparelho" data-testid="rascunho">
+            Há alterações não salvas desta receita guardadas neste aparelho.
+            <Group mt="xs">
+              <Button size="xs" onClick={retomarRascunho}>
+                Retomar rascunho
+              </Button>
+              <Button variant="default" size="xs" onClick={descartarRascunho}>
+                Descartar rascunho
+              </Button>
+            </Group>
+          </Alert>
+        )}
+
+        {canPublish && (
+          <Group>
+            <Button variant="light" onClick={() => setConfirmPublish(true)}>
+              Publicar
+            </Button>
+          </Group>
+        )}
+        {confirmPublish && (
+          <Alert color="yellow" title="Publicar receita?" icon={<IconAlertTriangle size={16} />}>
+            A receita passa a ser pública, visível a todos os usuários.
+            <Group mt="xs">
+              <Button size="xs" loading={publishMutation.isPending} onClick={() => publishMutation.mutate()}>
+                Confirmar publicação
+              </Button>
+              <Button variant="default" size="xs" onClick={() => { publishMutation.reset(); setConfirmPublish(false); }}>
+                Cancelar publicação
+              </Button>
+            </Group>
+          </Alert>
+        )}
+        {publishMutation.isError && (
+          <Alert color="red" icon={<IconAlertTriangle size={16} />} title="Não foi possível publicar" data-testid="erro-publicar">
+            {nutritionErrorInfo(publishMutation.error, 'Não foi possível publicar a receita.').message}
+            <ul>
+              {nutritionErrorInfo(publishMutation.error, '').items.map((it) => (
+                <li key={it.code}>{it.label}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+
+        <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <Stack gap="md">
 
         <TextInput label="Nome da receita" value={name} onChange={(e) => edit(setName)(e.currentTarget.value)} required />
 
@@ -272,18 +390,20 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
           <Text size="sm" c={BRAND.textMuted}>
             Informe a quantidade do ingrediente cru, como vem da embalagem. Uma receita não pode ser ingrediente de outra receita.
           </Text>
-          <FoodSearch
-            isAdmin={false}
-            selectedId={null}
-            excludeRecipes
-            onRegister={(termo) => setCadastro({ nome: termo })}
-            onSelect={(item) => {
-              edit(setRows)([
-                ...rows,
-                { key: nextKey.current++, food_id: item.id, label: item.name, quantity: '', unit: item.basis, portion_id: null },
-              ]);
-            }}
-          />
+          {!readOnly && (
+            <FoodSearch
+              isAdmin={false}
+              selectedId={null}
+              excludeRecipes
+              onRegister={(termo) => setCadastro({ nome: termo })}
+              onSelect={(item) => {
+                edit(setRows)([
+                  ...rows,
+                  { key: nextKey.current++, food_id: item.id, label: item.name, quantity: '', unit: item.basis, portion_id: null },
+                ]);
+              }}
+            />
+          )}
           {cadastro && (
             <Paper withBorder radius="md" p="md" data-testid="cadastro-alimento">
               <FoodRegistrationFlow
@@ -300,7 +420,7 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
               )}
             </Paper>
           )}
-          {temDesatualizado && recipe && (
+          {temDesatualizado && recipe && !readOnly && (
             <Group>
               <Button variant="light" color="yellow" onClick={() => setConfirmRefresh(invalidOverrides.length === 0)}>
                 Atualizar ingredientes e recalcular
@@ -391,11 +511,13 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
           w={220}
         />
 
-        <Group>
-          <Button variant="light" onClick={() => run(previewMutation, saveMutation)} loading={previewMutation.isPending}>
-            Calcular
-          </Button>
-        </Group>
+        {!readOnly && (
+          <Group>
+            <Button variant="light" onClick={() => run(previewMutation, saveMutation)} loading={previewMutation.isPending}>
+              Calcular
+            </Button>
+          </Group>
+        )}
 
         {invalidOverrides.length > 0 && (
           <Alert color="yellow" icon={<IconAlertTriangle size={16} />} data-testid="ajuste-invalido">
@@ -532,7 +654,7 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
         {confirmLeave && (
           <Alert color="yellow" title="Descartar alterações?" icon={<IconAlertTriangle size={16} />}>
             <Group mt="xs">
-              <Button color="red" size="xs" onClick={onCancel}>
+              <Button color="red" size="xs" onClick={() => { descartarRascunho(); onCancel(); }}>
                 Descartar alterações
               </Button>
               <Button variant="default" size="xs" onClick={() => setConfirmLeave(false)}>
@@ -542,13 +664,23 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
           </Alert>
         )}
 
+        </Stack>
+        </fieldset>
+
         <Group justify="flex-end">
           <Button variant="default" onClick={leave}>
-            Cancelar
+            {readOnly ? 'Voltar' : 'Cancelar'}
           </Button>
-          <Button onClick={() => run(saveMutation, previewMutation)} loading={saveMutation.isPending}>
-            Salvar receita
-          </Button>
+          {readOnly && onDuplicate && (
+            <Button onClick={onDuplicate} loading={duplicating}>
+              Duplicar para mim
+            </Button>
+          )}
+          {!readOnly && (
+            <Button onClick={() => run(saveMutation, previewMutation)} loading={saveMutation.isPending}>
+              Salvar receita
+            </Button>
+          )}
         </Group>
       </Stack>
     </Paper>

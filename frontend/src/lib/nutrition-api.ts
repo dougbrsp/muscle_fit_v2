@@ -56,6 +56,7 @@ import type {
   NutritionWeek,
   RecipeDetail,
   RecipeListResponse,
+  RecipeScope,
   RecipePreview,
   RecipePreviewPayload,
   RecipeSavePayload,
@@ -221,7 +222,7 @@ export function deleteFood(foodId: number): Promise<{ status: string; id: number
 
 export const recipeKeys = {
   all: ['nutrition-recipes'] as const,
-  list: () => [...recipeKeys.all, 'list'] as const,
+  list: (scope: RecipeScope = 'mine') => [...recipeKeys.all, 'list', scope] as const,
   detail: (foodId: number) => [...recipeKeys.all, 'detail', foodId] as const,
   versions: (foodId: number) => [...recipeKeys.all, 'versions', foodId] as const,
 };
@@ -234,8 +235,8 @@ export function createRecipe(payload: RecipeSavePayload): Promise<RecipeDetail> 
   return apiFetch<RecipeDetail>('/nutrition/recipes', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export function fetchRecipes(): Promise<RecipeListResponse> {
-  return apiFetch<RecipeListResponse>('/nutrition/recipes');
+export function fetchRecipes(scope: RecipeScope = 'mine'): Promise<RecipeListResponse> {
+  return apiFetch<RecipeListResponse>(scope === 'mine' ? '/nutrition/recipes' : `/nutrition/recipes?scope=${scope}`);
 }
 
 export function fetchRecipe(foodId: number): Promise<RecipeDetail> {
