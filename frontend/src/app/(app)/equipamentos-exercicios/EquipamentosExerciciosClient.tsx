@@ -77,6 +77,7 @@ import type { MappingCanonicalOptionsResponse } from '@/lib/mappings-types';
 import type { ExerciseMappingCatalogListResponse } from '@/lib/muscle-groups-types';
 import { BRAND } from '@/theme';
 import { EquipmentSafetyTab } from './EquipmentSafetyTab';
+import { ResistanceProfilesTab } from './ResistanceProfilesTab';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
@@ -795,6 +796,7 @@ export function EquipamentosExerciciosClient() {
           <Tabs.Tab value="massa">Associação em massa</Tabs.Tab>
           <Tabs.Tab value="catalogo">Catálogo de equipamentos</Tabs.Tab>
           <Tabs.Tab value="seguranca">Segurança</Tabs.Tab>
+          <Tabs.Tab value="perfis-resistencia">Perfis de resistência</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="associacoes" pt="lg">
@@ -1366,6 +1368,9 @@ export function EquipamentosExerciciosClient() {
             canEdit={segurancaControls.canEdit}
             loading={equipmentQuery.isLoading}
           />
+        </Tabs.Panel>
+        <Tabs.Panel value="perfis-resistencia" pt="lg">
+          <ResistanceProfilesTab equipment={equipmentItems} canView canEdit={catalogControls.canEdit} />
         </Tabs.Panel>
       </Tabs>
 

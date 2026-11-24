@@ -15,6 +15,17 @@ def test_vocabularios_tem_unknown_e_versao():
     assert set(v["status"]) == {"suggested", "reviewed", "verified", "rejected"}
 
 
+def test_vocabulario_exporta_acoes_listas_de_estado_e_teto():
+    v = rp.export_vocabulary()
+    assert v["actions"] == {"approve": rp.APPROVE_STATUS, "reject": rp.REJECT_STATUS}
+    assert v["actions"]["approve"] in rp.RELIABLE_STATUSES and v["actions"]["reject"] in rp.HUMAN_REVIEW_STATUSES
+    assert rp.can_transition(rp.STATUS_SUGGESTED, v["actions"]["approve"], rp.ORIGIN_ADMIN)
+    assert v["default_status"] == rp.ADMIN_DEFAULT_STATUS == rp.APPROVE_STATUS and v["default_status"] in v["status"]
+    assert v["pending_statuses"] == sorted(rp.PENDING_STATUSES)
+    assert set(v["human_review_statuses"]) == set(rp.HUMAN_REVIEW_STATUSES) == {"reviewed", "verified", "rejected"}
+    assert v["suggest_max_pairs"] == rp.SUGGEST_MAX_PAIRS
+
+
 def test_ausencia_vira_unknown_nunca_constante():
     p = rp.validate_profile({})
     assert p.profile == "unknown" and p.line == "unknown"

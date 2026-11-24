@@ -46,6 +46,11 @@ def _client(papel: str = "admin") -> TestClient:
 def test_vocabulario_e_o_export_do_dono(db):
     r = _client("regular").get("/resistance-profiles/vocabulary")
     assert r.status_code == 200 and r.json() == dono.export_vocabulary()
+    assert r.json()["default_status"] == dono.ADMIN_DEFAULT_STATUS
+    j = r.json()
+    assert j["actions"] == {"approve": dono.APPROVE_STATUS, "reject": dono.REJECT_STATUS}
+    assert j["suggest_max_pairs"] == dono.SUGGEST_MAX_PAIRS and j["pending_statuses"] == ["suggested"]
+    assert "human_review_statuses" in j
 
 
 def test_lista_so_pares_ativos_com_ausente_como_desconhecido_e_sem_n_mais_1(db):
