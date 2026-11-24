@@ -144,6 +144,52 @@ Branch `feat/perfis-resistencia-tela-l43`, sem commit. Não promovido a produç�
 
 **Impacto em produção** (por leitura do código, não medido em produção): só usuários com acesso ao catálogo veem a aba, e só depois da promoção. A aba só chama rotas que respondem 503 enquanto a migração 126 não estiver aplicada.
 
+## Fatia 2 — redundância entre exercícios (lote 45, 2026-11-24, #288)
+
+Branch `feat/redundancia-l45`, sem commit. Não promovida a produção.
+
+**Contexto.** A fatia 1 guarda o perfil no par, sem consumidor de motor. A fatia 2 usa esse perfil para dizer se dois exercícios de um Modelo fazem o mesmo trabalho (redundância). A semântica segue a issue #288.
+
+**Decisões do usuário (24/11/2026).**
+- Semântica da issue: redundância é mesmo trabalho muscular e mecânico; estímulo complementar não é redundância.
+- Aviso não bloqueante no editor manual de Modelo, com "Manter assim". Nada impede salvar.
+- Só perfis revisados (`reviewed`, `verified`) contam para alta e moderada. Sugestão da IA (`suggested`) não eleva nível.
+- **À risca (24/11/2026):** sem perfil revisado nos dois lados, o nível é no máximo baixa e não há aviso. Hoje há 0 perfis revisados em produção (medido na fatia 1), então só duplicata exata (quase duplicado) avisa até o admin revisar perfis.
+- Sem dado = desconhecida. Dado ausente nunca vira "baixa" nem "constante".
+
+**Alternativas consideradas.**
+- Escore numérico somado: recusado, porque é opaco e não auditável. O nível sai de regras, com motivos e componentes.
+- Bloquear o salvamento quando houver redundância: recusado pelo usuário. O aviso é só informativo.
+- Tratar a sugestão da IA como evidência de alta: recusado. A IA não é revisão humana (mesma regra da fatia 1).
+- Regra no frontend: recusada. A tela só mostra o nível e os motivos que a API devolve.
+
+**Decisão: motor (`api/app/domain/exercise_redundancy.py`, `REDUNDANCY_VERSION = "redundancy-v1"`).** Regras na ordem do docstring; a primeira que casa decide:
+1. Mesmo exercício e mesmo equipamento: quase duplicado.
+2. Falta contribuição muscular, grupo primário ou padrão biomecânico em um dos lados: desconhecida, confiança baixa.
+3. Nenhum grupo primário em comum: baixa. Compartilhar só músculo secundário não é redundância, e o motivo diz qual caso.
+4. Mesmo grupo primário, mas padrão biomecânico ou articulação principal diferentes: baixa.
+5. Mesmo grupo primário, padrão e articulação: alta só se os dois perfis forem revisados ou verificados, com todos os componentes conhecidos e iguais, e sem divergência de movimento, posição, trajetória ou lateralidade. Senão, moderada.
+- Lateralidade diferente impede alta (cai em moderada).
+- Sem perfil revisado nos dois lados, o teto é baixa, inclusive para a igualdade que sustentaria alta. Nesse caso não há aviso.
+- Confiança: a menor entre os dois perfis confiáveis; sem os dois, baixa.
+- Contribuição muscular entra pelo `muscle_contribution_resolver`, reduzida a grupo e papel, sem recalcular pesos. O perfil passa por `resistance_profile.validate_profile` dentro de `compare`.
+- Ordem (`LEVEL_ORDER`, `level_rank`), comparação (`at_least`) e piso padrão de exibição (`DISPLAY_MIN_LEVEL` = moderada) moram no dono. Rota e tela não decidem ordem nem piso.
+
+**Decisão: rota (`api/app/exercise_redundancy_routes.py`, `POST /workout-plan-templates/redundancy-preview`).** Permissão `modelos.treino`/`editar` com `min_scope="alunos"`, a mesma do editor. Sem escrita. Corpo `RedundancyPreviewIn` (`api/app/request_models.py`): `items` com `mapping_id` e `equipment_id` opcional, teto `REDUNDANCY_PREVIEW_MAX_ITEMS` (30 itens); `target_index` compara só o item alvo com os demais, e sem ele compara todos os pares; `min_level` opcional sobrepõe o piso: sem ele, a rota usa `DISPLAY_MIN_LEVEL` do dono (`at_least`); valor inválido: 422 `invalid_min_level`. Em lote: uma leitura do catálogo, uma do resolvedor e uma de perfis, qualquer que seja o número de itens. Sem a migração 126, os perfis viram `None`, sem 503. A resposta vem do mais redundante para o menos.
+
+**Decisão: aviso (`frontend/src/app/(app)/modelos-treino/[id]/RedundancyWarning.tsx`).** Dispara quando o exercício ou o equipamento de um item muda, com debounce de 600 ms. A carga inicial não consulta. Mostra o pior par do alvo a partir de moderada, com "Manter assim". O cliente não envia `min_level` e não tem literal de nível nem piso (`frontend/src/lib/exercise-redundancy-api.ts`): o piso é o `DISPLAY_MIN_LEVEL` do dono, aplicado pela rota.
+
+**Limites.**
+- O aviso só aparece no modo de séries por equipamento, por decisão de escopo do lote 45.
+- O item relacionado aparece por posição ("Parecido com o exercício N deste dia"), não por nome.
+- Sem perfil revisado nos dois lados, o teto é baixa e o aviso não aparece; só duplicata exata (quase duplicado) avisa. Moderada e alta exigem perfis revisados dos dois lados, e hoje não há nenhum em produção.
+
+**Fica para a fatia 3.** Geração automática de perfis em lote e diagnóstico de Modelos existentes. O aviso só roda na edição; Modelos já salvos não são varridos.
+
+**Impacto em produção** (por leitura do código, 24/11/2026; não medido em produção). Nada muda para quem não edita Modelos. A rota é nova e não escreve. A tabela de perfis ainda não existe em produção (medido na fatia 1, em 23/11). Sem perfil revisado nos dois lados, nenhum par passa de baixa, e não há aviso, salvo para duplicata exata (quase duplicado).
+
+**Não verificado neste lote:** testes unitários, guarda de fontes, rota contra MySQL e a tela no navegador.
+
 ## Verificação
 
 Este ADR não registra execução de testes. Arquivos de teste da entrega (não executados nesta tarefa):

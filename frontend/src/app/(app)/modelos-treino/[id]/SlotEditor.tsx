@@ -63,6 +63,7 @@ import { BRAND } from '@/theme';
 import { BlurCommitTextInput } from './BlurCommitInputs';
 import { EquipmentSeriesItemCard } from './EquipmentSeriesItemCard';
 import { PercentBudgetItemCard } from './PercentBudgetItemCard';
+import { RedundancyWarning } from './RedundancyWarning';
 import { SlotBatchPctShortcut } from './SlotBatchPctShortcut';
 import { SlotTotalTime } from './SlotTotalTime';
 import { DragHandle, SortableItem, type SortableData, type SortableHandle } from './sortable';
@@ -543,6 +544,8 @@ export function SlotEditor({
                     }
                   </SortableItem>
                 ))}
+                {/* Só 'equipment_series' tem itens com mapping_id (a validação do form barra equipamento nos outros modos; o card percent_budget é por grupo muscular), então não há prévia a consultar nos demais. */}
+                {volumeMode === 'equipment_series' && <RedundancyWarning items={slot.items} />}
                 {slot.items.length === 0 && (
                   <Text c={BRAND.textMuted} ta="center" py="sm" size="sm">
                     Nenhum item neste slot ainda.

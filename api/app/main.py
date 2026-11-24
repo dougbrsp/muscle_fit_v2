@@ -1039,6 +1039,15 @@ except Exception as exc:
     )
 
 try:
+    from app.exercise_redundancy_routes import router as exercise_redundancy_router
+    app.include_router(exercise_redundancy_router)  # antes do router com "/{template_id}"
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.exercise_redundancy").exception(
+        "Exercise redundancy router não foi carregado. Erro: %s", exc
+    )
+
+try:
     from app.workout_plan_templates import router as workout_plan_templates_router
     app.include_router(workout_plan_templates_router)
 except Exception as exc:
