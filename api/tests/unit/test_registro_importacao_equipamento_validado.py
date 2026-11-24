@@ -27,7 +27,7 @@ class _Cur:
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
         self.queries += 1
-        if flat.startswith("SELECT gym_id, is_active FROM gym_equipment"):
+        if flat.startswith(("SELECT gym_id, is_active FROM gym_equipment", "SELECT ge.gym_id, ge.is_active FROM gym_equipment ge JOIN gyms")):
             self._one = self.ge.get(params[0])
         elif flat.startswith("SELECT ge.id, COALESCE"):
             self._all = [{"id": i, "exercise_id": self.serves[i]} for i in params if i in self.serves]
@@ -52,7 +52,7 @@ def test_equipamento_coerente_da_academia_passa():
 def test_equipamento_inexistente_422():
     with pytest.raises(HTTPException) as exc:
         services.validate_explicit_equipment(_Cur(), GYM, 11, 555)
-    assert _codigo(exc) == (422, "equipment_not_found")
+    assert _codigo(exc) == (422, "equipment_not_in_session_gym")
 
 
 def test_equipamento_de_outra_academia_422():
