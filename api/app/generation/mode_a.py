@@ -50,6 +50,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from ..domain import cardio_prescription
 from ..domain import equipment_ranking as ranking
+from ..domain import exercise_redundancy as red
 from ..domain import training_safety as ts
 from ..domain.training_goal import goal_by_group, resolved_goal_value
 from ..domain.progression_engine import APPLY_TECHNIQUE, SKIP, track_technique_in_force
@@ -275,22 +276,45 @@ def _filter_candidates(
 # ---------------------------------------------------------------------------
 
 
-def _rank_key(candidate: Candidate, used_exercise_ids: frozenset[int]) -> tuple:
+def _rank_key(candidate: Candidate, used_exercise_ids: frozenset[int], redundant: int = 0) -> tuple:
     """`(stars DESC, last_used ASC NULLS FIRST, exercise_already_in_session ASC,
-    equipment.name ASC, gym_equipment.id ASC)`.
+    redundant_with_session ASC, equipment.name ASC, gym_equipment.id ASC)`.
 
     Os quatro criterios que nao dependem da sessao vem de
     `domain/equipment_ranking.ranking_key` - a ordem do recomendador e do
     motor e a MESMA funcao, nunca duas definicoes. O criterio de sessao
     (`exercise_already_in_session`) entra no meio, como a secao 6.1 manda.
+    `redundant` (#288) vem do dono `domain/exercise_redundancy`: so desempate.
     """
     base = ranking.ranking_key(candidate.ranking_item())
     in_session = 1 if candidate.exercise_id in used_exercise_ids else 0
-    return base[:3] + (in_session,) + base[3:]
+    return base[:3] + (in_session, redundant) + base[3:]
 
 
-def rank_candidates(candidates: Sequence[Candidate], used_exercise_ids: frozenset[int]) -> list[Candidate]:
-    return sorted(candidates, key=lambda candidate: _rank_key(candidate, used_exercise_ids))
+def _redundancy_against_session(
+    candidate: Candidate,
+    redundancy: Optional[Mapping[tuple[int, Optional[int]], red.Candidate]],
+    session_pairs: Sequence[tuple[int, Optional[int]]],
+):
+    """`(nivel, outro, resultado)` do dono contra os ja escolhidos na sessao, ou None (sem dado)."""
+    if not redundancy or candidate.key not in redundancy:
+        return None
+    chosen = [redundancy[p] for p in session_pairs if p in redundancy]
+    return red.max_level_against(redundancy[candidate.key], chosen) if chosen else None
+
+
+def rank_candidates(
+    candidates: Sequence[Candidate],
+    used_exercise_ids: frozenset[int],
+    redundancy: Optional[Mapping[tuple[int, Optional[int]], red.Candidate]] = None,
+    session_pairs: Sequence[tuple[int, Optional[int]]] = (),
+) -> list[Candidate]:
+    def key(candidate: Candidate) -> tuple:
+        found = _redundancy_against_session(candidate, redundancy, session_pairs)
+        penalty = 1 if found and red.at_least(found[0], red.GENERATION_PENALTY_MIN_LEVEL) else 0
+        return _rank_key(candidate, used_exercise_ids, penalty)
+
+    return sorted(candidates, key=key)
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +371,8 @@ def _allocate_group(
     used_exercise_ids: set[int],
     headroom_by_group: Mapping[int, float],
     selection_audit: list[dict[str, Any]],
+    redundancy: Optional[Mapping[tuple[int, Optional[int]], red.Candidate]] = None,
+    session_pairs: Optional[list[tuple[int, Optional[int]]]] = None,
 ) -> list[ChosenExercise]:
     """Passo 6 para UM grupo. Para quando a ativacao do grupo alcanca
     `target_min`, quando ja tem 3 exercicios, ou quando acabam os candidatos.
@@ -359,6 +385,8 @@ def _allocate_group(
     chosen: list[ChosenExercise] = []
     if budget.is_excluded:
         return chosen
+    if session_pairs is None:
+        session_pairs = []
 
     rank = 0
     while (
@@ -367,7 +395,7 @@ def _allocate_group(
     ):
         pick: Optional[ChosenExercise] = None
         for allow_reduction in (False, True):
-            for candidate in rank_candidates(candidates, frozenset(used_exercise_ids)):
+            for candidate in rank_candidates(candidates, frozenset(used_exercise_ids), redundancy, session_pairs):
                 if candidate.exercise_id in used_exercise_ids:
                     continue
                 prescription = prescriptions.get(candidate.key)
@@ -427,6 +455,14 @@ def _allocate_group(
             break
 
         rank += 1
+        extra: dict[str, Any] = {}
+        found = _redundancy_against_session(pick.candidate, redundancy, session_pairs)
+        if found and red.at_least(found[0], red.DISPLAY_MIN_LEVEL):
+            extra["redundancy"] = {
+                "level": found[0],
+                "other_exercise_id": found[1].exercise_id,
+                "confidence": found[2].confidence,
+            }
         selection_audit.append(
             pick.candidate.audit_entry(
                 rank=rank,
@@ -434,8 +470,10 @@ def _allocate_group(
                 reason=None,
                 sets_count=pick.sets_count,
                 sets_prescribed_by_progression=int(pick.prescription.decision.suggested_sets or 0),
+                **extra,
             )
         )
+        session_pairs.append(pick.candidate.key)
         chosen.append(pick)
         used_exercise_ids.add(pick.candidate.exercise_id)
         for group_id, weight in pick.candidate.stimulus.items():
@@ -448,6 +486,18 @@ def _allocate_group(
 # ---------------------------------------------------------------------------
 # Orquestracao
 # ---------------------------------------------------------------------------
+
+
+def _load_redundancy(conn: Any, pairs: Sequence[tuple[int, Optional[int]]]) -> dict[tuple[int, Optional[int]], red.Candidate]:
+    """Uma vez por geracao (#288). Falha (tabela ausente etc.) = sem criterio de redundancia, geracao igual a anterior."""
+    try:
+        from ..intelligence.redundancy_candidates import load_candidates
+
+        with conn.cursor() as cur:
+            return load_candidates(cur, pairs)
+    except Exception:
+        logger.warning("mode_a: redundancia indisponivel; geracao sem o criterio", exc_info=True)
+        return {}
 
 
 def _slot_date(plan_date: Optional[str], today: date) -> date:
@@ -632,6 +682,9 @@ def generate_plan_draft_from_template_a(
                 }
             )
             safety_by_pair = ts.resolve_training_safety_bulk(conn, pairs) if pairs else {}
+            redundancy = _load_redundancy(
+                conn, [c.key for group in candidates_by_group.values() for c in group]
+            )
             # M97 F1: estados de todos os objetivos; cada grupo le os do SEU
             # objetivo (o do item do grupo > Modelo > default, pelo dono).
             group_states = ps.load_all_group_states(conn, int(user_id))
@@ -683,6 +736,7 @@ def generate_plan_draft_from_template_a(
         # ---- passos 4/5/6 ----------------------------------------------
         session_activation: dict[int, float] = {}
         used_exercise_ids: set[int] = set()
+        session_pairs: list[tuple[int, Optional[int]]] = []
         selection_audit: dict[int, list[dict[str, Any]]] = {}
         fallbacks: list[dict[str, Any]] = []
         chosen_by_group: dict[int, list[ChosenExercise]] = {}
@@ -728,6 +782,8 @@ def generate_plan_draft_from_template_a(
                 used_exercise_ids=used_exercise_ids,
                 headroom_by_group=headroom_by_group,
                 selection_audit=audit,
+                redundancy=redundancy,
+                session_pairs=session_pairs,
             )
 
         # ---- passo 9 (saida) -------------------------------------------
