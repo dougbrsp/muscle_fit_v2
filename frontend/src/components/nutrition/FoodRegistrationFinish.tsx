@@ -53,7 +53,10 @@ export function FoodRegistrationFinish({ food, title = 'Alimento salvo', onConcl
       setErro(
         falhouFavorito
           ? favoriteErrorLines(resultado.error, 'Não foi possível adicionar aos favoritos.')
-          : [nutritionErrorInfo(resultado.error, 'Não foi possível adicionar ao cadastro público.').message],
+          : (() => {
+              const info = nutritionErrorInfo(resultado.error, 'Não foi possível adicionar ao cadastro público.');
+              return [info.message, ...info.items.map((it) => it.label).filter((l) => l !== info.message)];
+            })(),
       );
       return;
     }

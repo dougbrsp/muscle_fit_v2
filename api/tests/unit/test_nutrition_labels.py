@@ -214,13 +214,13 @@ _PREFIXADOS = {
     _diary.ERR_QUICK_VALUE_TOO_HIGH,
     # L37: receita (`<código>:<índice ou campo>`).
     _recipe.ERR_INVALID_INGREDIENT_AMOUNT,
-    _recipe.ERR_OVERRIDE_FIELD,
     _recipe.ERR_OVERRIDE_VALUE,
     _recipe.LIMIT_INCOMPLETE,
-    "recipe_ingredient_not_found",
+    _recipe.ERR_INGREDIENT_NOT_FOUND,
     "recipe_ingredient_amount_out_of_range",
-    "recipe_ingredient_is_recipe",
-    "recipe_ingredient_portion_not_found",
+    _recipe.ERR_INGREDIENT_IS_RECIPE,
+    _recipe.ERR_INGREDIENT_PORTION_NOT_FOUND,
+    _mm.LIMIT_ASSUMED_DENSITY,  # limitação de UM ingrediente da receita: `assumed_density:<índice>`
     _mm.LIMIT_MISSING_QUANTITY,
     _diary.ERR_UNIT_WITHOUT_CONVERSION,
     _diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE,
@@ -244,10 +244,11 @@ def test_todo_codigo_de_limitacao_da_meta_e_do_plano_tem_texto():
 
 def test_todo_codigo_de_receita_tem_rotulo_pt_br():
     do_motor = {v for n, v in vars(_recipe).items() if n.startswith(("ERR_", "LIMIT_")) and isinstance(v, str)}
-    das_rotas = {"food_is_recipe", "recipe_ingredient_not_found",
-                 "recipe_ingredient_is_recipe", "recipe_ingredient_portion_not_found",
-                 "recipe_version_conflict"}
-    assert do_motor
+    das_rotas = {"food_is_recipe"}  # os demais códigos da rota moram no motor (`recipe.ERR_INGREDIENT_*`, `ERR_VERSION_CONFLICT`)
+    assert do_motor and {_recipe.ERR_VERSION_CONFLICT, _recipe.ERR_INGREDIENT_NOT_FOUND} <= do_motor
+    # Erro de chave de substituição não ecoa a chave recebida: rótulo sem campo.
+    assert "{" not in lb.limitation_label(_recipe.ERR_OVERRIDE_FIELD)
+    assert lb.limitation_label(f"{_recipe.ERR_OVERRIDE_FIELD}:<script>") == f"{_recipe.ERR_OVERRIDE_FIELD}:<script>"
     for codigo in do_motor | das_rotas:
         rotulo = lb.LIMITATION_LABELS.get(codigo) or lb.PREFIXED_LIMITATION_LABELS.get(codigo)
         assert rotulo, codigo
@@ -312,6 +313,12 @@ def test_campos_do_plano_tem_rotulo():
     assert _ee.LIMIT_MISSING_ACTIVITY_LEVEL in lb.LIMITATION_LABELS
     assert _macros.LIMIT_MISSING_PROTEIN_BASIS in lb.LIMITATION_LABELS
     assert _cc.LIMIT_CARB_FLOOR_PREVENTS_CYCLE in lb.LIMITATION_LABELS
+
+
+def test_densidade_assumida_de_ingrediente_da_receita_diz_qual_ingrediente_e_cita_a_densidade_do_dono():
+    texto = lb.limitation_label(f"{_mm.LIMIT_ASSUMED_DENSITY}:1")
+    assert texto.startswith("Ingrediente 2: ") and f"{_mm.DEFAULT_DENSITY_G_PER_ML:g} g por ml" in texto
+    assert lb.limitation_label(_mm.LIMIT_ASSUMED_DENSITY) == lb.LIMITATION_LABELS[_mm.LIMIT_ASSUMED_DENSITY]  # diário inalterado
 
 
 def test_rotulo_do_teto_do_ingrediente_da_receita_cita_o_teto_do_motor():

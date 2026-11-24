@@ -188,6 +188,11 @@ export function AlimentosClient() {
       {promoteMutation.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
           {nutritionErrorInfo(promoteMutation.error, 'Não foi possível tornar o alimento público.').message}
+          <ul>
+            {nutritionErrorInfo(promoteMutation.error, '').items.map((it) => (
+              <li key={it.code}>{it.label}</li>
+            ))}
+          </ul>
         </Alert>
       )}
 

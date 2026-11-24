@@ -702,16 +702,18 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     recipe_mod.ERR_INVALID_FINAL_WEIGHT: "Peso final da receita inválido.",
     recipe_mod.ERR_YIELD_IMPLAUSIBLE: "Rendimento implausível: confira o peso final e os ingredientes.",
     recipe_mod.LIMIT_RAW_WEIGHT_EXCLUDES_ML: "Há ingrediente em ml: o rendimento (peso cru) não foi calculado.",
-    "recipe_ingredient_not_found": "Ingrediente não encontrado.",
-    "recipe_ingredient_is_recipe": "Receita não pode ser ingrediente de outra receita.",
-    "recipe_ingredient_portion_not_found": "Porção não encontrada para o ingrediente.",
+    recipe_mod.ERR_OVERRIDE_FIELD: "Há nutriente que não pode ser editado na receita.",
+    recipe_mod.ERR_INGREDIENT_NOT_FOUND: "Ingrediente não encontrado.",
+    recipe_mod.ERR_INGREDIENT_IS_RECIPE: "Receita não pode ser ingrediente de outra receita.",
+    recipe_mod.ERR_INGREDIENT_PORTION_NOT_FOUND: "Porção não encontrada para o ingrediente.",
+    recipe_mod.ERR_PUBLISH_ARCHIVED: "Receita arquivada não pode ser publicada.",
     "food_is_recipe": "Receita se edita pela tela de receita.",
     recipe_mod.ERR_PUBLISH_NAME_REQUIRED: "A receita precisa de nome para ser publicada.",
     recipe_mod.ERR_PUBLISH_FINAL_WEIGHT_REQUIRED: "A receita precisa do peso final para ser publicada.",
     recipe_mod.ERR_PUBLISH_NO_INGREDIENTS: "A receita precisa de ao menos um ingrediente para ser publicada.",
     recipe_mod.ERR_PUBLISH_INVALID_VALUES: "Os valores por 100 g da receita estão fora das regras do catálogo.",
     recipe_mod.ERR_PUBLIC_EDIT_FORBIDDEN: "Receita pública só é editada por quem administra o catálogo.",
-    "recipe_version_conflict": "Outra edição da receita foi salva ao mesmo tempo. Tente de novo.",
+    recipe_mod.ERR_VERSION_CONFLICT: "Outra edição da receita foi salva ao mesmo tempo. Tente de novo.",
     # Dado do sujeito (o 422 do preview lista estes).
     bmr_mod.LIMIT_MISSING_SEX: "Sexo não informado no perfil.",
     bmr_mod.LIMIT_SEX_OTHER_REQUIRES_FFM: "Sexo \"Outro\" exige a massa livre de gordura (bioimpedância) para a TMB.",
@@ -1117,12 +1119,15 @@ PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     recipe_mod.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE: (
         f"Ingrediente {{field}}: quantidade acima de {recipe_mod.RECIPE_INGREDIENT_AMOUNT_MAX:g} g ou ml."
     ),
-    recipe_mod.ERR_OVERRIDE_FIELD: "{field}: nutriente não editável na receita.",
     recipe_mod.ERR_OVERRIDE_VALUE: "{field}: valor inválido.",
     recipe_mod.LIMIT_INCOMPLETE: "{field}: nutriente ausente em algum ingrediente; o total é parcial.",
-    "recipe_ingredient_not_found": "Ingrediente {field}: não encontrado.",
-    "recipe_ingredient_is_recipe": "Ingrediente {field}: receita não pode ser ingrediente.",
-    "recipe_ingredient_portion_not_found": "Ingrediente {field}: porção não encontrada.",
+    recipe_mod.ERR_INGREDIENT_NOT_FOUND: "Ingrediente {field}: não encontrado.",
+    recipe_mod.ERR_INGREDIENT_IS_RECIPE: "Ingrediente {field}: receita não pode ser ingrediente.",
+    recipe_mod.ERR_INGREDIENT_PORTION_NOT_FOUND: "Ingrediente {field}: porção não encontrada.",
+    # Limitação de UM ingrediente da receita (`<código>:<índice>`, `recipe.calculate_recipe`).
+    meal_math_mod.LIMIT_ASSUMED_DENSITY: (
+        f"Ingrediente {{field}}: sem densidade, g e ml convertidos a {meal_math_mod.DEFAULT_DENSITY_G_PER_ML:g} g por ml (água)."
+    ),
     # Erros de quantidade do ingrediente (`diary.item_amount_errors` + `:<índice>`); sem sufixo, saem no diário.
     **{
         codigo: "Ingrediente {field}: " + LIMITATION_LABELS[codigo][0].lower() + LIMITATION_LABELS[codigo][1:]

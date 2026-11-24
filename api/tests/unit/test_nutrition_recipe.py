@@ -145,7 +145,7 @@ def test_substituicao_pode_preencher_campo_incompleto():
 
 
 @pytest.mark.parametrize("overrides,codigo", [
-    ({"nome": 1}, f"{rc.ERR_OVERRIDE_FIELD}:nome"),
+    ({"nome": 1}, rc.ERR_OVERRIDE_FIELD),  # sem ecoar a chave recebida
     ({"protein_g": -1}, f"{rc.ERR_OVERRIDE_VALUE}:protein_g"),
     ({"protein_g": "abc"}, f"{rc.ERR_OVERRIDE_VALUE}:protein_g"),
     ({"protein_g": 150}, f"{rc.ERR_OVERRIDE_VALUE}:protein_g"),  # acima da base de 100 g
@@ -185,6 +185,32 @@ def test_status_do_ingrediente_no_catalogo_current_outdated_unavailable():
     assert rc.ingredient_catalog_status(base, {**base, "energy_kcal": 131.0}) == rc.CATALOG_OUTDATED
     assert rc.ingredient_catalog_status(base, {**base, "protein_g": 1.0}) == rc.CATALOG_OUTDATED
     assert rc.ingredient_catalog_status(base, None) == rc.CATALOG_UNAVAILABLE
+
+
+def test_limitacao_do_ingrediente_sobe_para_o_resultado_dizendo_qual_ingrediente():
+    com_densidade = rc.RecipeIngredient("leite", 200, Unit.MILLILITER, ARROZ, limitations=("assumed_density",))
+    r = rc.calculate_recipe([_ing("arroz", 100, ARROZ), com_densidade], 250)
+    assert "assumed_density:1" in r.limitations and "assumed_density" not in r.limitations
+    assert r.to_dict()["limitations"] == list(r.limitations)
+    assert labels.limitation_label("assumed_density:1").startswith("Ingrediente 2: ")
+
+
+def test_avisos_sem_repeticao_e_sem_o_do_calculado_quando_ha_substituicao():
+    r = rc.calculate_recipe([_ing("arroz", 100, {**ARROZ, "energy_kcal": 900})], 100)
+    assert r.warnings == (rc.WARN_ATWATER,)
+    sem = rc.apply_overrides(r.per_100_g, None)
+    assert sem.warnings == (rc.WARN_ATWATER,) and rc.merged_warnings(r, sem) == (rc.WARN_ATWATER,)
+    corrigido = rc.apply_overrides(r.per_100_g, {"energy_kcal": 350})
+    assert corrigido.warnings == () and rc.merged_warnings(r, corrigido) == ()
+
+
+def test_id_de_ingrediente_tem_teto_do_dono():
+    assert rc.is_valid_id(1) and rc.is_valid_id(rc.RECIPE_ID_MAX)
+    assert not any(rc.is_valid_id(v) for v in (0, -1, rc.RECIPE_ID_MAX + 1, True, "1", None, 1.5))
+
+
+def test_status_com_valor_estranho_no_snapshot_e_desatualizado_sem_levantar():
+    assert rc.ingredient_catalog_status({"energy_kcal": "abc"}, {"energy_kcal": 1.0}) == rc.CATALOG_OUTDATED
 
 
 def test_teto_do_ingrediente_e_proprio_e_a_chave_normaliza_a_unidade():
@@ -228,6 +254,12 @@ def test_publish_blockers_acusa_cada_requisito_que_falta():
 def test_publish_blockers_peso_zero_e_valor_fora_da_regra():
     assert rc.publish_blockers("Bolo", 0, 1, _VALORES)[0] == (rc.ERR_PUBLISH_FINAL_WEIGHT_REQUIRED,)
     assert rc.publish_blockers("Bolo", 300, 1, {**_VALORES, "protein_g": 500.0})[0] == (rc.ERR_PUBLISH_INVALID_VALUES,)
+
+
+def test_publish_blockers_receita_arquivada_nao_publica():
+    assert rc.publish_blockers("Bolo", 300, 2, _VALORES, is_active=0)[0] == (rc.ERR_PUBLISH_ARCHIVED,)
+    assert rc.publish_blockers("Bolo", 300, 2, _VALORES, is_active=1)[0] == ()
+    assert labels.limitation_label(rc.ERR_PUBLISH_ARCHIVED) != rc.ERR_PUBLISH_ARCHIVED
 
 
 def test_visibilidade_e_edicao_de_receita():

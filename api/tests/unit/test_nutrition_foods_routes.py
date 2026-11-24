@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import nutrition_foods as foods_mod
+from app import nutrition_recipes
 from app.domain.nutrition import catalog, food_text
 from app.nutrition_schema import food_tables_missing_error
 from app.security import Identity, get_current_identity
@@ -77,6 +78,7 @@ def db(monkeypatch):
     monkeypatch.setattr(foods_mod, "get_conn", banco.conn)
     monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
     monkeypatch.setattr(foods_mod, "has_favorites_table", lambda cur: True)
+    monkeypatch.setattr(nutrition_recipes, "require_recipe_tables", lambda cur: None)
     return banco
 
 
@@ -512,6 +514,40 @@ def test_promocao_de_receita_sem_peso_final_ou_sem_ingrediente_e_422(db):
     r2 = admin.post(f"/nutrition/foods/{sem_ingrediente}/promote").json()["detail"]
     assert r2["code"] == "recipe_publish_no_ingredients"
     assert db.foods[sem_versao]["owner_user_id"] == db.foods[sem_ingrediente]["owner_user_id"] == ALUNO
+
+
+def test_receita_arquivada_nao_publica_pela_rota_nem_pelo_motor(db):
+    rid = _receita(db)
+    _versao(db, rid)
+    db.foods[rid]["is_active"] = 0
+    r = _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote")  # a rota não enxerga a inativa
+    assert r.status_code == 404 and db.foods[rid]["owner_user_id"] == ALUNO
+    with db.conn() as conn, conn.cursor() as cur:  # e o bloqueio do motor vale se a linha chegar inativa
+        codigos, _ = nutrition_recipes.promotion_blockers(cur, db.foods[rid])
+    assert "recipe_publish_archived" in codigos
+
+
+def test_promocao_sem_tabelas_de_receita_e_503(db, monkeypatch):
+    rid = _receita(db)
+    _versao(db, rid)
+    monkeypatch.undo()  # volta o require_recipe_tables real
+    monkeypatch.setattr(foods_mod, "get_conn", db.conn)
+    monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
+    monkeypatch.setattr(nutrition_recipes, "require_recipe_tables",
+                        lambda cur: (_ for _ in ()).throw(foods_mod.HTTPException(status_code=503, detail="sem 125")))
+    assert _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote").status_code == 503
+    assert db.foods[rid]["owner_user_id"] == ALUNO
+
+
+def test_admin_ve_receita_privada_alheia_so_com_nome_e_valores_sem_ingredientes(db):
+    rid = _receita(db)
+    _versao(db, rid)
+    corpo = _client("admin", ADMIN).get(f"/nutrition/foods/{rid}")
+    assert corpo.status_code == 200
+    j = corpo.json()
+    assert j["name"] == "Receita de arroz" and j["per_100"]["energy_kcal"] is not None
+    assert not {"ingredients", "method", "preparation", "instructions", "versions", "recipe"} & set(j)
+    assert _client("admin", ADMIN).get(f"/nutrition/recipes/{rid}").status_code in (404, 405)  # sem a rota de receitas montada
 
 
 def test_excluir_receita_arquiva_e_sai_dos_favoritos_e_porcao_vale(db):

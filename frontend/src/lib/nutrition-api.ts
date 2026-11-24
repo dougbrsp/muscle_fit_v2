@@ -220,6 +220,9 @@ export function deleteFood(foodId: number): Promise<{ status: string; id: number
 // Receitas (#286, fatia 1): alimento composto. Cálculo, limites e permissões são da API; arquivar = `deleteFood`.
 // ---------------------------------------------------------------------------
 
+/** Prefixo das chaves do rascunho de receita no aparelho (apagadas no logout). */
+export const RECIPE_DRAFT_PREFIX = 'muscle_fit:receita-rascunho:';
+
 export const recipeKeys = {
   all: ['nutrition-recipes'] as const,
   list: (scope: RecipeScope = 'mine') => [...recipeKeys.all, 'list', scope] as const,

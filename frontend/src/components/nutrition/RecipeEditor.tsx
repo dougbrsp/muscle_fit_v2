@@ -8,7 +8,7 @@ import { FoodSearch } from './FoodSearch';
 import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { NutritionLimitations } from './NutritionLimitations';
 import { RDC429_FIELDS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
-import { createRecipe, fetchFood, fetchRecipeVersions, foodKeys, nutritionErrorInfo, previewRecipe, promoteFood, recipeKeys, updateRecipe } from '@/lib/nutrition-api';
+import { createRecipe, fetchFood, fetchRecipeVersions, foodKeys, nutritionErrorInfo, previewRecipe, promoteFood, RECIPE_DRAFT_PREFIX, recipeKeys, updateRecipe } from '@/lib/nutrition-api';
 import { unitUsesPortion } from '@/lib/nutrition-meal-form';
 import type {
   RecipeCatalogStatus,
@@ -41,9 +41,10 @@ type Props = {
   onPublished?: () => void;
 };
 
-type Draft = { name: string; instructions: string; finalWeight: string; overrides: Record<string, string>; rows: Row[] };
+// `version`: versão da receita quando o rascunho nasceu (null = receita nova); rascunhos antigos não a têm.
+type Draft = { name: string; instructions: string; finalWeight: string; overrides: Record<string, string>; rows: Row[]; version?: number | null };
 const DRAFT_DEBOUNCE_MS = 600;
-const draftKey = (userId: number, recipe: RecipeDetail | null) => `muscle_fit:receita-rascunho:${userId}:${recipe?.id ?? 'new'}`;
+const draftKey = (userId: number, recipe: RecipeDetail | null) => `${RECIPE_DRAFT_PREFIX}${userId}:${recipe?.id ?? 'new'}`;
 // Storage indisponível ou cheio não pode quebrar a tela: toda operação engole o erro.
 function readDraft(key: string): Draft | null {
   try {
@@ -149,7 +150,8 @@ export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, d
   const snapshot = (s: { name: string; instructions: string; finalWeight: string; overrides: unknown; rows: unknown }) => JSON.stringify(s);
   const dirty = snapshot({ name, instructions, finalWeight, overrides, rows }) !== snapshot(initial);
 
-  const current = { name, instructions, finalWeight, overrides, rows };
+  const recipeVersion = recipe?.recipe?.version ?? null;
+  const current = { name, instructions, finalWeight, overrides, rows, version: recipeVersion };
   const currentRef = useRef(current);
   currentRef.current = current;
   // Rascunho no aparelho: só dados do formulário, gravado com debounce enquanto há alterações.
@@ -212,7 +214,11 @@ export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, d
     liberaLink.current = true;
     descartarRascunho();
     a.click();
+    // O clique é síncrono: se outro listener o cancelou, a flag não pode ficar armada para o próximo.
+    liberaLink.current = false;
   }
+  // Não há botão com `router.push` neste editor: Cancelar/Voltar passam por `leave()` (confirmação) e a
+  // navegação por link passa pelo interceptor acima. Botão novo que navegue deve usar `leave()`.
 
   function edit<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -327,6 +333,11 @@ export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, d
         {draft && !dirty && (
           <Alert color="blue" title="Rascunho neste aparelho" data-testid="rascunho">
             Há alterações não salvas desta receita guardadas neste aparelho.
+            {recipe != null && (draft.version ?? null) !== recipeVersion && (
+              <Text size="sm" c="yellow" data-testid="rascunho-versao-anterior">
+                Atenção: o rascunho é de uma versão anterior da receita; retomar pode sobrescrever mudanças mais recentes.
+              </Text>
+            )}
             <Group mt="xs">
               <Button size="xs" onClick={retomarRascunho}>
                 Retomar rascunho
@@ -340,14 +351,19 @@ export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, d
 
         {canPublish && (
           <Group>
-            <Button variant="light" onClick={() => setConfirmPublish(true)}>
+            <Button variant="light" onClick={() => setConfirmPublish(true)} disabled={dirty}>
               Publicar
             </Button>
+            {dirty && (
+              <Text size="xs" c={BRAND.textMuted}>
+                Salve as alterações antes de publicar.
+              </Text>
+            )}
           </Group>
         )}
         {confirmPublish && (
           <Alert color="yellow" title="Publicar receita?" icon={<IconAlertTriangle size={16} />}>
-            A receita passa a ser pública, visível a todos os usuários.
+            A receita passa a ser pública, visível a todos os usuários, incluindo os ingredientes e o modo de preparo.
             <Group mt="xs">
               <Button size="xs" loading={publishMutation.isPending} onClick={() => publishMutation.mutate()}>
                 Confirmar publicação

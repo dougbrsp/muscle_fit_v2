@@ -183,7 +183,7 @@ describe('RecipeEditor', () => {
   it('erro de ingrediente aparece na linha, sem derrubar a tela', async () => {
     const msg = 'Ingrediente 1 (Farinha): é uma receita.';
     createRecipe.mockRejectedValue(
-      new ApiError(msg, 422, { error: 'ingredient_is_recipe:0', code: 'ingredient_is_recipe:0', message: msg, index: 0 }),
+      new ApiError(msg, 422, { error: 'recipe_ingredient_is_recipe:0', code: 'recipe_ingredient_is_recipe:0', message: msg, index: 0 }),
     );
     await mount();
     await preencher();
@@ -197,7 +197,7 @@ describe('RecipeEditor', () => {
 
   it('remover ingrediente limpa o erro de linha que ficaria na linha errada', async () => {
     const msg = 'Ingrediente 1 (Farinha): é uma receita.';
-    createRecipe.mockRejectedValue(new ApiError(msg, 422, { error: 'x:0', code: 'x:0', message: msg, index: 0 }));
+    createRecipe.mockRejectedValue(new ApiError(msg, 422, { error: 'recipe_ingredient_not_found:0', code: 'recipe_ingredient_not_found:0', message: msg, index: 0 }));
     await mount();
     await preencher();
     await click('add-farinha');
@@ -250,7 +250,7 @@ describe('RecipeEditor', () => {
   });
 
   it('prévia bem-sucedida limpa o erro de salvar', async () => {
-    createRecipe.mockRejectedValue(new ApiError('falhou ao salvar', 422, { error: 'final_weight_invalid', code: 'final_weight_invalid', message: 'falhou ao salvar' }));
+    createRecipe.mockRejectedValue(new ApiError('falhou ao salvar', 422, { error: 'recipe_invalid_final_weight', code: 'recipe_invalid_final_weight', message: 'falhou ao salvar' }));
     previewRecipe.mockResolvedValue(previa());
     await mount();
     await preencher();
@@ -408,7 +408,7 @@ describe('RecipeEditor', () => {
       expect(window.localStorage.getItem(KEY)).toBeNull(); // ainda no debounce
       await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
       const salvo = JSON.parse(window.localStorage.getItem(KEY)!);
-      expect(Object.keys(salvo).sort()).toEqual(['finalWeight', 'instructions', 'name', 'overrides', 'rows']);
+      expect(Object.keys(salvo).sort()).toEqual(['finalWeight', 'instructions', 'name', 'overrides', 'rows', 'version']);
       expect(salvo.name).toBe('Bolo');
       await act(async () => root?.unmount());
       await mount({ userId: 7 });
@@ -421,6 +421,14 @@ describe('RecipeEditor', () => {
       await click('Salvar receita');
       await flush();
       expect(window.localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('rascunho de versão diferente da receita avisa', async () => {
+      const rec = existente('current');
+      (rec as unknown as { recipe: { version: number } }).recipe.version = 4;
+      window.localStorage.setItem('muscle_fit:receita-rascunho:7:3', JSON.stringify({ name: 'X', instructions: '', finalWeight: '', overrides: {}, rows: [], version: 3 }));
+      await mount({ recipe: rec, userId: 7 });
+      expect(host.querySelector('[data-testid="rascunho-versao-anterior"]')).not.toBeNull();
     });
 
     it('descartar rascunho apaga; sem userId não grava', async () => {
@@ -468,7 +476,7 @@ describe('RecipeEditor', () => {
 
     it('Publicar só na privada com can_promote, com confirmação e erros por item', async () => {
       promoteFood.mockRejectedValue(
-        new ApiError('x', 422, { code: 'food_not_publishable', message: 'Faltam requisitos.', errors: [{ code: 'missing_x', label: 'Falta o peso' }] }),
+        new ApiError('x', 422, { error: 'recipe_publish_name_required', code: 'recipe_publish_name_required', message: 'Faltam requisitos.', errors: [{ code: 'recipe_publish_final_weight_required', label: 'Falta o peso' }] }),
       );
       const onPublished = vi.fn();
       await mount({ recipe: publica({ can_edit: true, can_promote: true }, { is_public: false, is_own: true }), onPublished });
@@ -483,6 +491,16 @@ describe('RecipeEditor', () => {
       await click('Confirmar publicação');
       await flush();
       expect(onPublished).toHaveBeenCalled();
+    });
+
+    it('confirmação cita ingredientes e preparo; Publicar desabilitado com edição pendente', async () => {
+      await mount({ recipe: publica({ can_edit: true, can_promote: true }, { is_public: false, is_own: true }) });
+      const botao = () => [...host.querySelectorAll('button')].find((b) => b.textContent === 'Publicar')!;
+      expect(botao().disabled).toBe(false);
+      await click('Publicar');
+      expect(host.textContent).toContain('ingredientes e o modo de preparo');
+      await type(byLabel('Nome da receita'), 'Outra');
+      expect(botao().disabled).toBe(true);
     });
 
     it('sem can_promote não mostra Publicar', async () => {
