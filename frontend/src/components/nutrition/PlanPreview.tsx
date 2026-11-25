@@ -256,6 +256,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
 
   const preview = previewQuery.data;
   if (!preview) return null;
+  const diasExibidos = preview.week.filter((target) => !isDraft || preview.publish_days.includes(target.local_date));
   const publishError = publishMutation.isError ? nutritionErrorInfo(publishMutation.error, 'Não foi possível publicar.') : null;
   const recomputeError = recomputeMutation.isError
     ? nutritionErrorInfo(recomputeMutation.error, 'Não foi possível recalcular.')
@@ -273,20 +274,18 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
         {preview.manual_check && <ManualCheckCard check={preview.manual_check} />}
       </SimpleGrid>
       {isDraft && <NutritionLimitations items={preview.blocking} title="Este plano não pode ser publicado" tone="error" />}
-      <NutritionLimitations items={withoutDayWarnings(preview.warnings)} title="Avisos do plano (não impedem publicar)" />
+      <NutritionLimitations items={withoutDayWarnings(preview.warnings, diasExibidos)} title="Avisos do plano (não impedem publicar)" />
 
       <Title order={4} c={BRAND.textPrimary}>
         {isDraft ? 'Dias que o plano vai valer nesta semana' : 'Semana atual'}
       </Title>
       <WeekTargetsTable
-        rows={preview.week
-          .filter((target) => !isDraft || preview.publish_days.includes(target.local_date))
+        rows={diasExibidos
           .map((target) => ({ local_date: target.local_date, target }))}
         today={preview.today}
       />
       <Stack gap={4} data-testid="gordura-por-dia">
-        {preview.week
-          .filter((target) => !isDraft || preview.publish_days.includes(target.local_date))
+        {diasExibidos
           .map((target) => (
             <div key={target.local_date}>
               <Text size="xs" c="dimmed">
@@ -296,7 +295,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
             </div>
           ))}
       </Stack>
-      <NutritionLimitations items={withoutDayWarnings(preview.limitations)} title="Avisos do motor nesta semana" />
+      <NutritionLimitations items={withoutDayWarnings(preview.limitations, diasExibidos)} title="Avisos do motor nesta semana" />
 
       {isDraft && (
         <Group

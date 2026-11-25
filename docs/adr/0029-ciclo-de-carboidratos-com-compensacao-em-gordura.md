@@ -81,6 +81,36 @@ Consequências:
 - Tela: no modo manual, oculta proteína (g/kg) e gordura (%), mas mantém os valores gravados e os envia de volta. Números da prévia do rascunho salvo ficam ocultos com edição não salva. Aviso do ciclo só por dia.
 - Impacto em produção (informado pelo usuário em 25/11/2026): 1 plano vigente, na política `vary_kcal` ("variar as calorias"); 0 planos com compensação pela gordura. `nutrition-v7` regrava as metas não congeladas de hoje em diante (no plano vigente, com os mesmos valores, pois `vary_kcal` não muda); dias passados e congelados não mudam; os hashes-ouro de `api/tests/unit/test_nutrition_modos_legados_ouro.py` são regravados, com nota. Planos com ciclo e compensação podem passar a ter dias com o ciclo não aplicado (hoje, nenhum).
 
+## Decisões de 25/11/2026 (lote 54)
+
+Contexto. Segunda simulação do rascunho (25/11/2026: 972 combinações de `auto_intervals`, 2.592 de `adaptive_balance`, 288 de fases e 144 manuais) achou 64 anomalias; agora são 0. Três causas: gramas manuais com compensação pela gordura (a gordura ficaria fixa e a conta não fechava), manutenção com gasto estimado abaixo da TMB (no adaptativo, 120 kg com gasto de 1.200 kcal dava carbo 0) e prévia que escondia avisos de dias fora de `publish_days`.
+
+Alternativas consideradas:
+- gramas manuais + compensação bloqueando ao salvar: recusada, porque bloqueia uma combinação que o usuário pode querer;
+- gramas manuais + compensação com a gordura recalculada: recusada, porque contraria as gramas que o usuário fixou;
+- manutenção com piso de TMB só quando o gasto é maior que a TMB (regra atual): recusada, porque deixa o caso do adaptativo com carbo 0;
+- **escolhida pelo usuário em 25/11/2026**: (1) gramas manuais usam `vary_kcal` (o ciclo varia as kcal e a gordura fica nos gramas fixos), com aviso; (2) piso `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB também na manutenção, com ajuste ≥ 0 e sem limitar pelo gasto; (3) `ENGINE_VERSION` `nutrition-v8`; (4) avisos de dias fora de `publish_days` voltam à lista geral da prévia.
+
+Decisão:
+- **Dono do ciclo** (`carb_cycling.py`): com gramas manuais, `daily_target.compute_daily_target` pede `vary_kcal` ao ciclo, mesmo que o plano guarde `fat_compensation`. A política efetiva é `vary_kcal` (`DailyTarget.carb_cycle_policy`), e o dia recebe `LIMIT_FAT_COMPENSATION_IGNORED_MANUAL` (`fat_compensation_ignored_manual`). Rótulo em `labels.py` (`limitation_label`); o código é exportado no bloco `nutrition` do espelho (`__init__.py`).
+- **Validação** (`plan.check_cycle_floors`): o aviso `fat_compensation_ignored_manual` entra em `avisos`, uma vez por plano. Não bloqueia e não é erro de ciclo; a gordura fixa dos gramas manuais não gera `cycle_fat_share_*`.
+- **Tela**: o aviso aparece sob o seletor de política do editor. O JSX fica em `PlanCycleDays.tsx` (usado por `PlanForm.tsx`) e aparece quando gramas manuais e `nutrition.fat_compensation_policy` do espelho estão juntos; o texto vem de `nutrition.fat_compensation_ignored_manual_label`. A tela não calcula nada.
+- **Dono da estratégia** (`strategy.py`): `kcal_target` aplica o piso de TMB também na manutenção com ajuste ≥ 0 (quando o resultado de sempre fica abaixo de `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB). `_maintenance_with_cut` aplica o piso sem limitar pelo gasto (`tdee`); o código `CLAMP_MIN_INTAKE_BMR_MULTIPLE` (`min_intake_bmr_multiple`) vai em `clamped_by`. O bloqueio de energia (`KCAL_BLOCK_MIN`, limitado por `tdee`) segue como estava. Só muda o resultado quando o gasto fica abaixo da TMB; nos demais casos a conta é bit a bit a de sempre. Fases de manutenção, diet break e refeed dentro de um plano de cutting também usam a função de manutenção (`phases.MAINTENANCE_KCAL_PHASES` e `params.as_maintenance()`, em `daily_target.py`), e só mudam com o piso novo se o gasto estimado ficar abaixo da TMB.
+- **Versão**: `daily_target.ENGINE_VERSION` = `nutrition-v8`. Os hashes-ouro de `api/tests/unit/test_nutrition_modos_legados_ouro.py` foram regravados, com nota (ver o cabeçalho do arquivo).
+- **Prévia**: `api/app/nutrition_plans.py` não muda. O código `fat_compensation_ignored_manual` aparece em `warnings` da prévia (valor novo em campo existente, aditivo). Os avisos de dias fora de `publish_days` voltam à lista geral só pelo frontend: `withoutDayWarnings` (`PlanCycleDays.tsx`) tira da lista só o aviso que aparece em algum dia exibido (`PlanPreview.tsx`, `PlanForm.tsx`).
+
+Trade-offs:
+- Ganha: nenhuma combinação válida é bloqueada; a gordura manual continua como o usuário a fixou; o caso do adaptativo deixa de dar carbo 0.
+- Paga: com gramas manuais, a compensação pela gordura não existe; o usuário que quer esse modo precisa tirar os gramas manuais. Na manutenção, a meta pode ficar acima do gasto estimado (ingestão até 1,0 × TMB), o que é o pedido do usuário.
+- Paga: `nutrition-v8` regrava as metas não congeladas de hoje em diante; dias passados e congelados não mudam.
+
+Consequências:
+- Sem migração e sem mudança de formato de `carb_cycling_json` nem de `nutrition_plans`.
+- Contrato: valor novo `fat_compensation_ignored_manual` em `warnings` da prévia (aditivo, sem campo novo); o filtro de avisos por dia é só de tela. Ver `MUSCLE_FIT.md`.
+- Mapa: `docs/motores/FONTES_DA_VERDADE.md`, bloco "Lote 54 de 25/11/2026 (#313)".
+- Impacto em produção (informado pelo usuário em 25/11/2026): 1 plano vigente, cutting com "variar as calorias" e sem gramas manuais, portanto valores inalterados; `nutrition-v8` regrava as metas não congeladas com os mesmos valores; dias congelados não mudam. Fases de manutenção, diet break e refeed em plano de cutting: só mudam se o gasto estimado ficar abaixo da TMB; não medido.
+- Verificação: esta seção é documental. A bateria que cobre estas regras está em `test_nutrition_ciclo_compensacao_gordura.py`, `test_nutrition_manutencao_piso.py`, `test_nutrition_prioridade_do_dia.py` e `test_nutrition_plan.py`; a execução não foi conferida aqui.
+
 ## Trade-offs
 
 - Ganha: o modo novo sem migração, sem mudança de formato para quem não o usa e sem perda de dados.

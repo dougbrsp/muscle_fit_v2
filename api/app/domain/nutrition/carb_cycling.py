@@ -69,6 +69,7 @@ LIMIT_TARGET_NOT_COMPUTABLE = "target_not_computable"
 LIMIT_FAT_COMPENSATION_INFEASIBLE = "fat_compensation_infeasible"
 LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED = "fat_compensation_target_not_closed"
 LIMIT_FAT_COMPENSATION_CARB_LIMITED = "fat_compensation_carb_limited"
+LIMIT_FAT_COMPENSATION_IGNORED_MANUAL = "fat_compensation_ignored_manual"  # gramas manuais: gordura fixa, ciclo varia as kcal
 LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED = "fat_compensation_cycle_skipped"  # gordura base já fora da faixa: delta 0
 # Diferença (g de carbo) abaixo da qual o delta limitado conta como igual ao pedido (sem aviso de limitação).
 CARB_LIMIT_SIGNIFICANT_G = 1e-6
