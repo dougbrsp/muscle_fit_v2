@@ -29,6 +29,7 @@ from fastapi import HTTPException
 
 from .access import EffectivePermissions, authorize_target, can_access_target, has_permission
 from .domain.nutrition import catalog
+from .domain.nutrition import recipe as recipe_engine
 from .security import Identity
 
 _USER_SQL = "SELECT id, username, full_name FROM users WHERE id = %s"
@@ -110,8 +111,10 @@ def can_edit_food(
     público. Fonte somente leitura nunca. `action` = "excluir" para a exclusão (`can_delete_food`)."""
     if catalog.is_read_only(food.get("source")):
         return False
-    dono = _owner(food)
-    return dono == int(identity.user_id) if dono is not None else administers_public_catalog(permissoes, action)
+    # Posse da edição: regra única do dono (`recipe.can_edit_recipe`), a mesma da receita (que é uma linha de alimento).
+    return recipe_engine.can_edit_recipe(
+        _owner(food), int(identity.user_id), administers_public_catalog(permissoes, action)
+    )
 
 
 def can_delete_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:

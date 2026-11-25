@@ -896,6 +896,44 @@ PK `id`; UK `uq_equipment_name(name)`; IDX `idx_equipment_type`; FK `fk_equipmen
 
 PK `id`; UK `uq_equipment_exercises_equipment_exercise(equipment_id, exercise_id)`; IDX `idx_eqex_equipment_active(equipment_id, is_active)`, `idx_eqex_exercise_active(exercise_id, is_active)`; FKs `equipment_id`→`equipment(id)` CASCADE, `exercise_id`→`exercise_catalog(id)` CASCADE.
 
+##### `equipment_exercise_resistance_profiles` (migração 126 — perfil de resistência do par, #288)
+
+Uma linha por par `equipment_exercises`. Dono do vocabulário e dos defaults: `api/app/domain/resistance_profile.py`.
+
+| Coluna | Tipo | Null | Default |
+|---|---|---|---|
+| id | bigint | não | AUTO_INCREMENT |
+| equipment_exercise_id | bigint | não | |
+| source, mechanism, trajectory, profile, line, direction_changes | varchar(32) | não | `'unknown'` |
+| flags_json | mediumtext | não | |
+| confidence | varchar(16) | não | `'low'` |
+| status | varchar(16) | não | `'suggested'` |
+| origin | varchar(16) | não | `'ai'` |
+| rationale, evidence | text | sim | |
+| vocabulary_version | varchar(32) | não | |
+| model_version | varchar(64) | sim | |
+| created_by, reviewed_by | bigint | sim | |
+| reviewed_at | datetime | sim | |
+| created_at, updated_at | datetime | não | CURRENT_TIMESTAMP |
+
+PK `id`; UK `uq_erp_pair(equipment_exercise_id)`; FK `fk_erp_pair` → `equipment_exercises(id)` CASCADE; FKs `fk_erp_created` e `fk_erp_reviewed` → `users(id)` SET NULL. Sem FK para `exercise_catalog`.
+
+##### `equipment_exercise_resistance_profile_history` (migração 126)
+
+Trilha de cada gravação do perfil (`before_json` é nulo na criação).
+
+| Coluna | Tipo | Null | Default |
+|---|---|---|---|
+| id | bigint | não | AUTO_INCREMENT |
+| profile_id | bigint | não | |
+| before_json, after_json | mediumtext | sim (`before_json`) / não (`after_json`) | |
+| actor_user_id | bigint | sim | |
+| origin | varchar(16) | não | |
+| reason | varchar(500) | sim | |
+| created_at | datetime | não | CURRENT_TIMESTAMP |
+
+PK `id`; IDX `idx_erph_profile(profile_id, id)`; FK `fk_erph_profile` → perfil CASCADE; FK `fk_erph_actor` → `users(id)` SET NULL.
+
 ##### `equipment_exercise_mappings` (AUTO_INCREMENT=242)
 
 | Coluna | Tipo | Null | Default |
@@ -1769,6 +1807,8 @@ Contagem de decorators de rota por arquivo (grep `@router.|@app.|@me_router.|@mu
 | `main_engines.py` | 2 | `jobs.py` | 1 |
 | `workouts_analysis.py` | 1 | | |
 
+**Receitas (`api/app/nutrition_recipes.py`, prefixo `/nutrition/recipes`, permissão `nutricao.alimentos`; lote 46, issue #286, parte 2).** Leitura: `GET /` com `scope=mine` (padrão), `public` ou `favorites`; `GET /{food_id}` lê a receita própria ou a pública (privada alheia = 404 `food_not_found`), com `instructions`. Edição: `PUT /{food_id}` só o dono na privada; na pública só quem tem `admin.catalogos:editar`, e os outros recebem 403 `recipe_public_edit_forbidden`. `POST /{food_id}/duplicate` (201) copia a receita própria ou a pública para uma privada do chamador. Publicação: `POST /nutrition/foods/{id}/promote` (`nutrition_foods.py`, permissão `admin.catalogos:editar`) aplica os requisitos do motor (422 `recipe_publish_*`) e torna a linha e as porções públicas. Regras: `api/app/domain/nutrition/recipe.py`. Rascunho da tela de receita só no `localStorage` do aparelho; nada disso vai ao servidor.
+
 Distribuição por Lambda HTTP: `musclefit-engines` = `analytics` (27) + `dashboard_modules` (7) + `dashboard_intelligence` (3) + `engines_extra` (2) + `main_engines` (2) = **41**; `musclefit-api-core` = **177**.
 
 Legenda de autenticação usada abaixo:
@@ -1787,7 +1827,7 @@ Legenda de autenticação usada abaixo:
 |---|---|---|---|---|---|---|---|
 | GET | `/health` | — | — | `{"status":"ok"}` | nenhuma | — | `health` |
 | GET | `/ready` | — | — | `{"status":"ready","db":bool}` (executa `SELECT 1 AS ok`) | nenhuma | exceção do Data API propaga (500) | `ready` |
-| POST | `/activities` | — | `ActivityIn` | `{"status":"ok","activity_id","external_id","exercises","sets"}` | ID | 422 `equipment_not_found`, `equipment_not_in_session_gym`, `equipment_pair_incoherent` (só quando o `equipment_id` explícito muda) | `create_or_replace_activity` → `services.upsert_activity(payload, user_id)` |
+| POST | `/activities` | — | `ActivityIn` | `{"status":"ok","activity_id","external_id","exercises","sets"}` | ID | 422 `gym_not_found` (academia do corpo inexistente ou inativa, só na MUDANÇA para ela: a já gravada é sempre aceita, mesmo inativa; nome sem match mantém a gravada; reimportação preserva a academia lida antes do DELETE; adoção só de academia ativa); e, só quando o `equipment_id` explícito muda, `equipment_not_in_session_gym` (inexistente ou de outra academia; mesma resposta, Lote 44 #284) e `equipment_pair_incoherent` | `create_or_replace_activity` → `services.upsert_activity(payload, user_id)` |
 | GET | `/activities` | `limit` (1–200, def 10), `offset` (≥0), `date_from`, `date_to`, `gym_id`, `conducted_by`, `q`, `session_status` | — | `{"items":[...]}` | ID | — | `list_activities` → `latest_activities` |
 | GET | `/activities/{activity_id}` | path int | — | dict da atividade com `exercises[].sets[]` | ID | 404 "Atividade não encontrada." | `get_activity` → `activity_detail` |
 | PUT | `/activities/{activity_id}` | path | `ActivityIn` | `{"status":"ok", ...upsert}` | ID | 404 | `update_activity_by_id` → `update_activity` |
@@ -1795,7 +1835,7 @@ Legenda de autenticação usada abaixo:
 | GET | `/exercises/history` | `name` (obrig.), `limit` (1–200, def 30) | — | `{"items":[...]}` | ID | — | `exercise_history` |
 | GET | `/exercises/last-session-sets` | `mapping_id` (obrig.), `exclude_activity_id` (obrig.), `equipment_id` | — | `{"item": {activity_id, local_date, sets[], record_scope, record: {reps, weight_kg} \| null, e1rm_kg} \| null}` | ID | — | `get_last_session_sets` (recorde/e1RM: `domain/equipment_record.py`) |
 | GET | `/exercises/logs` | `limit` (1–500, def 100), `date_from`, `date_to` | — | `{"items":[...]}` | ID | — | `list_exercise_logs` |
-| PUT | `/exercises/logs/{exercise_id}` | path | `ExerciseLogUpdateIn` (adiciona `workout_plan_exercise_id_provided` via `model_fields_set`) | `{"status":"ok","exercise_id","activity_id","sets"}` | ID | 404 "Exercício não encontrado."; 422 `equipment_not_found`, `equipment_not_in_session_gym`, `equipment_pair_incoherent` (só quando o `equipment_id` muda) | `update_exercise_log` |
+| PUT | `/exercises/logs/{exercise_id}` | path | `ExerciseLogUpdateIn` (adiciona `workout_plan_exercise_id_provided` via `model_fields_set`) | `{"status":"ok","exercise_id","activity_id","sets"}` | ID | 404 "Exercício não encontrado."; 422 `gym_not_found` (academia do corpo inexistente ou inativa, só na MUDANÇA para ela: a já gravada é sempre aceita, mesmo inativa); e, só quando o `equipment_id` muda, `equipment_not_in_session_gym` (inexistente ou de outra academia; mesma resposta, Lote 44 #284) e `equipment_pair_incoherent` | `update_exercise_log` |
 | DELETE | `/exercises/logs/{exercise_id}` | path | — | `{"status":"ok","exercise_id","activity_id","deleted_activity":false}` | ID | 404 | `delete_exercise_log` |
 | GET | `/sets/high-rpe` | `min_rpe` (float, def 9.0), `limit` (1–200, def 50) | — | `{"items":[...]}` | ID | — | `high_rpe_sets` |
 | POST | `/exercise-mappings` | — | `ExerciseMappingIn` | `{"status":"ok","id"}` | ADMIN (via `dependencies=[Depends(require_admin)]`) | — | `upsert_mapping` |
@@ -2183,6 +2223,29 @@ Fluxo completo em 6.6. Toda rota `card-generations` exige **admin** (403) e a fl
 
 ---
 
+
+#### 2.18 `resistance_profiles.py` (prefixo `/resistance-profiles`, 7 rotas, #288)
+
+Montado em `main.py` (bloco "resistance profiles router"). Sem as tabelas da migração 126, responde 503 `resistance_profile_tables_missing`. Dono das regras: `api/app/domain/resistance_profile.py`.
+
+| Método | Caminho | Query/Path | Corpo | Resposta | Permissão | Erros |
+|---|---|---|---|---|---|---|
+| GET | `/vocabulary` | — | — | `export_vocabulary()` do dono | `exercicios.catalogo`/`ver` | — |
+| GET | `/coverage` | — | — | pares ativos, com e sem perfil, por status e `unknown` | `exercicios.catalogo`/`ver` | 503 |
+| GET | `` | `status`, `confidence`, `equipment_id`, `exercise_id`, `pending`, `limit` (1–200, padrão 50), `offset` | — | `{items, total, limit, offset}`; par sem perfil = `has_profile: false` com componentes `unknown` | `exercicios.catalogo`/`ver` | 422 (`invalid_code`) |
+| GET | `/{equipment_exercise_id}` | path | — | item do par | `exercicios.catalogo`/`ver` | 404 `pair_not_found` |
+| GET | `/{equipment_exercise_id}/history` | `limit` (1–100), `offset` | — | `{items}` com `before`, `after`, `actor_user_id`, `origin`, `reason`, `created_at` | `exercicios.catalogo`/`ver` | 404 |
+| PUT | `/{equipment_exercise_id}` | path | `ResistanceProfileIn` (substituição completa; `status` obrigatório; `origin` forçado a `admin`) | item atualizado | `admin.catalogos`/`editar` | 404; 422 com `code` e `field`; 409 `profile_conflict` (outra gravação primeiro, ou deadlock na criação concorrente) |
+| POST | `/suggest` | — | `ResistanceSuggestIn` (`equipment_exercise_ids` opcional; sem ids, usa os pares pendentes até `limit`) | 202 `{job_ids, job_id, pairs, failed_batches}` (`job_id` = primeiro de `job_ids`; `pairs` = pedidos, inclusive os de bloco que falhou; sem pares: `{job_ids: [], job_id: null, pairs: 0, failed_batches: 0}`); status de cada job pela `GET /jobs/{job_id}` | `admin.catalogos`/`editar` | 503 `resistance_profile_tables_missing`; 422 acima de 30 pares (`SUGGEST_MAX_PAIRS_PER_REQUEST`) ou id inválido; 503 `suggest_dispatch_failed` (nenhum bloco despachado; bloco que falha vira `failed_batches` e o job sai `failed` com `dispatch_failed`). Sugestão só cria `suggested` (worker `resistance_profile_ai.py`). Até 30 pares por clique, divididos em um job e uma invocação de `musclefit-workout-ai` por bloco de 6 (`SUGGEST_PAIRS_PER_JOB`); pares acima de 6 num job saem `not_processed`. Decisão de 25/11/2026 (ADR 0036) |
+
+#### 2.19 `exercise_redundancy_routes.py` (prefixo `/workout-plan-templates`, 2 rotas, #288 fatias 2 e 3)
+
+Montado em `main.py` antes do router com `/{template_id}`. Só orquestra; o nível sai de `api/app/domain/exercise_redundancy.py`. Sem escrita. Em lote: uma leitura do catálogo, uma do resolvedor de contribuição e uma de perfis.
+
+| Método | Caminho | Query/Path | Corpo | Resposta | Permissão | Erros |
+|---|---|---|---|---|---|---|
+| POST | `/redundancy-preview` | — | `RedundancyPreviewIn`: `items` (de 1 a `REDUNDANCY_PREVIEW_MAX_ITEMS`, com `mapping_id` e `equipment_id` opcional), `target_index` opcional, `min_level` opcional (sem ele, o piso é o `DISPLAY_MIN_LEVEL` do dono: moderada) | `{items}` com `a_index`, `b_index`, `level`, `level_label`, `confidence`, `reasons`, `matching`, `diverging`, `limitations`, `version`; do mais para o menos redundante (ordem `level_rank`) | `modelos.treino`/`editar` (min_scope `alunos`) | 422 `invalid_min_level`; 422 de validação (`target_index` fora de `items`); 503 pela conexão (`connect_or_503`) |
+| GET | `/{template_id}/redundancy-diagnostic` (lote 47) | Path `template_id`; query `min_level` opcional (sem ele, `DISPLAY_MIN_LEVEL`) | — | `{template_id, slots}`: todo slot com `pairs` (pode ser vazio), com `a_item_id`, `b_item_id`, `a_mapping_id`, `b_mapping_id`, `level`, `level_label`, `confidence`, `reasons`, `matching`, `diverging`, `limitations`, `version`; do mais para o menos redundante. Só leitura da versão salva | `template_guard('ver', for_write=False)` | 422 `invalid_min_level`; 404 modelo não encontrado; 503 pela conexão |
 
 ### 3. Autenticação e autorização
 
@@ -3466,6 +3529,16 @@ Imagens são embutidas como `data:image/png;base64,...`.
 ---
 
 # Parte III — Frontend (`frontend/`)
+
+### Prévia do plano de nutrição: `macro_kcal_shares` (25/11/2026)
+
+- Campo novo `macro_kcal_shares` na prévia do plano (`nutrition_plans.py`, `day_public`): alvo (`target`) e cada dia (`week[i]`) trazem `{protein, carb, fat}`, fração das kcal de 0 a 1 que soma 1; `null` sem energia.
+- Dono: `api/app/domain/nutrition/manual_targets.py` (`macro_kcal_shares`). A tela só exibe.
+- Modo manual: a tela mostra % das kcal da prévia, oculta proteína g/kg e gordura %, mas mantém os valores gravados e os envia de volta.
+- Ciclo: a tela mostra gordura em g e % das kcal por dia.
+- Compensação com gordura: o carbo do dia é limitado para a gordura ficar na faixa da estratégia (cutting 15–30%, manutenção e bulking 20–35%); aviso `fat_compensation_carb_limited`. Mapa: `docs/motores/FONTES_DA_VERDADE.md`; decisão: `docs/adr/0029-ciclo-de-carboidratos-com-compensacao-em-gordura.md`.
+- Tela: números da prévia do rascunho salvo ficam ocultos com edição não salva; aviso do ciclo só por dia.
+- Impacto em produção: 1 plano vigente, na política `vary_kcal`; 0 com compensação pela gordura (informado pelo usuário em 25/11/2026). `ENGINE_VERSION` `nutrition-v7`: metas não congeladas de hoje em diante são regravadas (no plano vigente, com os mesmos valores); dias passados e congelados não mudam. Planos com ciclo e compensação podem ter dias com o ciclo não aplicado.
 
 ## 03 — Frontend MuscleFit (versão AWS)
 

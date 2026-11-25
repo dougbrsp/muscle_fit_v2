@@ -216,3 +216,74 @@ def test_resumo_da_meta_de_composicao():
     assert resumo.should_stop is True  # 9,5% já está abaixo do piso do cutting
     assert resumo.target_weight_for_goal_kg == pytest.approx(80 * (1 - 0.095) / (1 - resumo.goal_body_fat_percent / 100))
     assert resumo.to_dict()["goal_weight_kg"] is None
+
+
+# --- Ciclo com compensação: gordura na faixa e erros próprios do ciclo (lote 53) -------------------------------------
+
+
+def _ciclo_compensacao(estrategia="maintenance"):
+    resultado = pl.build_plan_settings(
+        strategy=estrategia,
+        fat_kcal_share=0.20,
+        cycle_days={"0": "high", "1": "low", "2": "high", "3": "low", "4": "high", "5": "low", "6": "low"},
+        cycle_policy="fat_compensation",
+        tdee_mode="explicit_training",
+        activity_level="moderate",
+    )
+    assert resultado.ok, resultado.errors
+    return resultado.settings
+
+
+@pytest.mark.parametrize("estrategia", ["cutting", "maintenance", "bulking"])
+def test_ciclo_compensacao_nao_bloqueia_e_mantem_a_gordura_na_faixa(estrategia):
+    from datetime import timedelta
+
+    from app.domain.nutrition.daily_target import DayContext, compute_daily_target
+
+    sujeito = Subject(
+        sex=Sex.MALE, age_years=30, height_cm=178, weight_kg=90, body_fat_percent=20, activity_level=ActivityLevel.MODERATE
+    )
+    settings = _ciclo_compensacao(estrategia)
+    erros, avisos = pl.check_cycle_floors(settings, sujeito)
+    assert erros == () and not any(a.startswith("cycle_fat") for a in avisos)
+    faixa = st.fat_share_range_for(S(estrategia))
+    for i in range(7):
+        ctx = DayContext(day=date(2026, 11, 23) + timedelta(days=i), is_training_day=False)
+        m = compute_daily_target(sujeito, settings.plan_params(), ctx).macros
+        assert faixa[0] - 1e-9 <= m.fat_g * 9 / m.kcal <= faixa[1] + 1e-9
+
+
+def test_erro_de_gordura_do_ciclo_tem_codigo_proprio_com_dia_e_fracao(monkeypatch):
+    from app.domain.nutrition.manual_targets import FieldCheck, ManualTargetsCheck, RangeStatus
+    from app.domain.nutrition import labels as lb
+
+    sujeito = Subject(sex=Sex.MALE, age_years=30, height_cm=178, weight_kg=90, body_fat_percent=20, activity_level=ActivityLevel.MODERATE)
+    falso = ManualTargetsCheck(
+        kcal=3000.0, macros=None, status=RangeStatus.BLOCKED,
+        fields=(FieldCheck("fat_g", 12.6, RangeStatus.BLOCKED, "kcal_share", 0.042, None, ("manual_blocked_below:fat_g",)),),
+    )
+    monkeypatch.setattr(pl, "check_manual_targets", lambda *a, **k: falso)
+    erros, _ = pl.check_cycle_floors(_ciclo_compensacao(), sujeito)
+    assert f"{pl.ERR_CYCLE_FAT_BELOW_MIN}:high:4" in erros and "manual_blocked_below:fat_g" not in erros
+    assert lb.limitation_label(f"{pl.ERR_CYCLE_FAT_BELOW_MIN}:high:4") == (
+        "Ciclo de carboidrato: no dia alto a gordura ficaria em 4% das kcal (mínimo seguro 10%). Não pode ser salvo."
+    )
+
+
+@pytest.mark.parametrize(
+    "status,fracao,codigo,esperado",
+    [
+        ("BLOCKED", 0.0459, "manual_blocked_below:fat_g", f"{pl.ERR_CYCLE_FAT_BELOW_MIN}:high:4"),  # piso, não round (5)
+        ("BLOCKED", 0.5041, "manual_blocked_above:fat_g", f"{pl.ERR_CYCLE_FAT_ABOVE_MAX}:high:51"),  # teto, não round (50)
+    ],
+)
+def test_percentual_do_codigo_de_gordura_do_ciclo_nao_esconde_o_desvio(monkeypatch, status, fracao, codigo, esperado):
+    from app.domain.nutrition.manual_targets import FieldCheck, ManualTargetsCheck, RangeStatus
+
+    sujeito = Subject(sex=Sex.MALE, age_years=30, height_cm=178, weight_kg=90, body_fat_percent=20, activity_level=ActivityLevel.MODERATE)
+    falso = ManualTargetsCheck(
+        kcal=3000.0, macros=None, status=RangeStatus[status],
+        fields=(FieldCheck("fat_g", 12.6, RangeStatus[status], "kcal_share", fracao, None, (codigo,)),),
+    )
+    monkeypatch.setattr(pl, "check_manual_targets", lambda *a, **k: falso)
+    assert esperado in pl.check_cycle_floors(_ciclo_compensacao(), sujeito)[0]

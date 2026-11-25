@@ -54,5 +54,7 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0032](0032-permissao-propria-para-acrescentar-equipamento-a-academia.md) | Permissão própria para acrescentar equipamento à academia, com migração 122 de concessões (issue #246) | Aceita | 2026-11-22 |
 | [0033](0033-politica-do-ciclo-em-coluna-propria-e-lembrada-com-o-ciclo-desligado.md) | Política do ciclo em coluna própria (migração 123) e lembrada com o ciclo desligado; supera partes da 0029 (issue #248) | Aceita | 2026-11-22 |
 | [0034](0034-prioridade-do-dia-no-diario-da-nutricao.md) | Prioridade nutricional do dia no diário da nutrição, no dono do ciclo; `nutrition-v6` (issue #272) | Aceita | 2026-11-22 |
+| [0035](0035-receitas-como-alimento-composto.md) | Receitas como alimento composto (`source='recipe'`), com motor próprio e migração 125; primeira fatia do backend (issue #286) | Aceita | 2026-11-23 |
+| [0036](0036-perfis-de-resistencia-do-par-exercicio-equipamento.md) | Perfis de resistência do par exercício+equipamento, com vocabulário controlado e revisão humana; fatia 1, parte A (migração 126, issue #288) | Aceita | 2026-11-23 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

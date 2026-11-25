@@ -82,9 +82,16 @@ app.add_middleware(RequestMemoMiddleware)
 
 # SEG-06: mesmo corpo do 403 `must_change_password` do musclefit-api-core
 # (`{"detail", "code"}`); sem isto o frontend recebia so `detail` aqui.
-from .security import MustChangePasswordRequired, must_change_password_handler  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from .security import (  # noqa: E402
+    MustChangePasswordRequired,
+    must_change_password_handler,
+    validation_error_handler,
+)
 
 app.add_exception_handler(MustChangePasswordRequired, must_change_password_handler)
+# #291: float nao finito no corpo da 422 (nao 500), como no api-core.
+app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 
 @app.get("/health")

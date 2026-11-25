@@ -113,6 +113,15 @@ def test_marca_decidida_e_a_relida_depois_do_lock(monkeypatch):
     assert out["form_practice"] is True and getattr(db, "updates", 0) == 0  # ja era 1: sem UPDATE
 
 
+def test_sem_o_campo_a_marca_decidida_tambem_e_a_relida_depois_do_lock(monkeypatch):
+    """#284: payload sem `exercise_form_practice` usa a marca da linha travada, nao a do snapshot."""
+    db = _db(monkeypatch)
+    ex = _ex(client_key="ex-1", form_practice=False)
+    db.fresh_mark = 1
+    out = _set(ex)
+    assert out["form_practice"] is True and out["intensity_status"] is None
+
+
 def test_contagem_usada_e_a_da_leitura_travada(monkeypatch):
     db = _db(monkeypatch)
     ex = _ex(client_key="ex-1", form_practice=True)

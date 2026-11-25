@@ -54,6 +54,13 @@ import type {
   NutritionRecomputePayload,
   NutritionRecomputeResponse,
   NutritionWeek,
+  RecipeDetail,
+  RecipeListResponse,
+  RecipeScope,
+  RecipePreview,
+  RecipePreviewPayload,
+  RecipeSavePayload,
+  RecipeVersionSummary,
   UsdaSearchResponse,
 } from './nutrition-types';
 
@@ -154,8 +161,10 @@ export function fetchMyNutritionPlan(): Promise<NutritionMyPlan> {
 // ---------------------------------------------------------------------------
 
 export const foodKeys = {
-  search: (q: string, scope: FoodSearchScope, source: string | null) =>
-    ['nutrition-foods-search', q, scope, source] as const,
+  search: (q: string, scope: FoodSearchScope, source: string | null, excludeRecipes = false) =>
+    (excludeRecipes
+      ? ['nutrition-foods-search', q, scope, source, 'sem-receitas']
+      : ['nutrition-foods-search', q, scope, source]) as readonly unknown[],
   detail: (foodId: number) => ['nutrition-food', foodId] as const,
   searchAll: ['nutrition-foods-search'] as const,
   byLetter: ['nutrition-foods-by-letter'] as const,
@@ -165,12 +174,13 @@ export const foodKeys = {
 
 export function searchFoods(
   q: string,
-  options: { scope?: FoodSearchScope; source?: string | null; limit?: number } = {},
+  options: { scope?: FoodSearchScope; source?: string | null; limit?: number; excludeRecipes?: boolean } = {},
 ): Promise<FoodSearchResponse> {
   const params = new URLSearchParams({ q });
   if (options.scope && options.scope !== 'visible') params.set('scope', options.scope);
   if (options.source) params.set('source', options.source);
   if (options.limit) params.set('limit', String(options.limit));
+  if (options.excludeRecipes) params.set('exclude_recipes', 'true');
   return apiFetch<FoodSearchResponse>(`/nutrition/foods/search?${params.toString()}`);
 }
 
@@ -204,6 +214,48 @@ export function createFood(payload: FoodItemCreatePayload): Promise<FoodSaveResp
 /** Exclusão lógica (a API decide a permissão: 404 `food_not_found`, 409 `food_source_read_only`, 403 `food_forbidden`). */
 export function deleteFood(foodId: number): Promise<{ status: string; id: number }> {
   return apiFetch(`/nutrition/foods/${foodId}`, { method: 'DELETE' });
+}
+
+// ---------------------------------------------------------------------------
+// Receitas (#286, fatia 1): alimento composto. Cálculo, limites e permissões são da API; arquivar = `deleteFood`.
+// ---------------------------------------------------------------------------
+
+/** Prefixo das chaves do rascunho de receita no aparelho (apagadas no logout). */
+export { RECIPE_DRAFT_PREFIX } from './recipe-draft-storage';
+
+export const recipeKeys = {
+  all: ['nutrition-recipes'] as const,
+  list: (scope: RecipeScope = 'mine') => [...recipeKeys.all, 'list', scope] as const,
+  detail: (foodId: number) => [...recipeKeys.all, 'detail', foodId] as const,
+  versions: (foodId: number) => [...recipeKeys.all, 'versions', foodId] as const,
+};
+
+export function previewRecipe(payload: RecipePreviewPayload): Promise<RecipePreview> {
+  return apiFetch<RecipePreview>('/nutrition/recipes/preview', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function createRecipe(payload: RecipeSavePayload): Promise<RecipeDetail> {
+  return apiFetch<RecipeDetail>('/nutrition/recipes', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function fetchRecipes(scope: RecipeScope = 'mine'): Promise<RecipeListResponse> {
+  return apiFetch<RecipeListResponse>(scope === 'mine' ? '/nutrition/recipes' : `/nutrition/recipes?scope=${scope}`);
+}
+
+export function fetchRecipe(foodId: number): Promise<RecipeDetail> {
+  return apiFetch<RecipeDetail>(`/nutrition/recipes/${foodId}`);
+}
+
+export function updateRecipe(foodId: number, payload: RecipeSavePayload): Promise<RecipeDetail> {
+  return apiFetch<RecipeDetail>(`/nutrition/recipes/${foodId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function fetchRecipeVersions(foodId: number): Promise<{ items: RecipeVersionSummary[] }> {
+  return apiFetch<{ items: RecipeVersionSummary[] }>(`/nutrition/recipes/${foodId}/versions`);
+}
+
+export function duplicateRecipe(foodId: number): Promise<RecipeDetail> {
+  return apiFetch<RecipeDetail>(`/nutrition/recipes/${foodId}/duplicate`, { method: 'POST' });
 }
 
 // ---------------------------------------------------------------------------

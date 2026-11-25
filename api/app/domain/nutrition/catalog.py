@@ -72,6 +72,12 @@ class FoodSource(str, Enum):
     USER = "user"
     LABEL_PHOTO = "label_photo"
     AI_ESTIMATE = "ai_estimate"
+    # Receita do usuário (issue #286): gravada só pela rota de receitas, nunca pelo cadastro comum nem editável por ele.
+    RECIPE = "recipe"
+
+
+def is_recipe_source(source: Any) -> bool:
+    return normalize_source(source) == FoodSource.RECIPE
 
 
 # TACO 4ª ed. (seed da migração 081; a migração embute o MESMO texto, teste de paridade).
@@ -137,6 +143,9 @@ REQUIRED_PER_100_FIELDS: Final[tuple[str, ...]] = ("energy_kcal", "carbohydrates
 # Importação de fonte externa (USDA/OFF, L3b): a fonte pode não informar um
 # macro (NULL, nunca 0); sem energia o item não serve ao diário e é recusado.
 EXTERNAL_REQUIRED_PER_100_FIELDS: Final[tuple[str, ...]] = ("energy_kcal",)
+# Receita (#286): um ingrediente da TACO pode não ter um macro (NULL, nunca 0); o
+# motor da receita marca o campo como incompleto e a linha do catálogo o guarda nulo.
+RECIPE_REQUIRED_PER_100_FIELDS: Final[tuple[str, ...]] = ("energy_kcal",)
 
 GRAM_FIELDS: Final[tuple[str, ...]] = tuple(campo for campo in PER_100_FIELDS if campo.endswith("_g"))
 MILLIGRAM_FIELDS: Final[tuple[str, ...]] = ("sodium_mg",)
@@ -215,6 +224,7 @@ class FoodOrigin(str, Enum):
     TACO = "taco"
     TBCA_MANUAL = "tbca_manual"
     AI = "ai"
+    RECIPE = "recipe"
 
 
 def food_origin(source: Any, barcode: Any) -> Optional[FoodOrigin]:
@@ -232,6 +242,7 @@ def food_origin(source: Any, barcode: Any) -> Optional[FoodOrigin]:
         FoodSource.TACO: FoodOrigin.TACO,
         FoodSource.TBCA_MANUAL: FoodOrigin.TBCA_MANUAL,
         FoodSource.AI_ESTIMATE: FoodOrigin.AI,
+        FoodSource.RECIPE: FoodOrigin.RECIPE,
     }.get(fonte)
 
 

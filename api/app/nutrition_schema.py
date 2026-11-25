@@ -67,8 +67,8 @@ PLAN_ENERGY_MISSING_MESSAGE = (
     "`published_preview_json` de `nutrition_plans` (migração 106, modo de gasto adaptativo) ainda não existem neste banco."
 )
 
-# Coluna da política do ciclo de carbo em `nutrition_plans` (123, #248): ADITIVA e tolerada. Sem ela a leitura usa a chave
-# `policy` do `carb_cycling_json` (reserva) e a escrita só grava a chave; nenhuma rota responde 503 por isso.
+# Coluna da política do ciclo de carbo em `nutrition_plans` (123, #248): ADITIVA e tolerada. A política vive só nesta coluna
+# (o JSON não a guarda); sem ela (banco sem a 123) vale a política padrão; nenhuma rota responde 503 por isso.
 PLAN_POLICY_COLUMN = "carb_cycle_policy"
 PLAN_POLICY_MIGRATION = "123"
 
@@ -99,6 +99,14 @@ FAVORITES_MIGRATION = "102"
 
 FAVORITES_TABLE_MISSING_MESSAGE = (
     "Alimentos preferidos indisponíveis: a tabela `user_favorite_foods` (migração 102) ainda não existe neste banco."
+)
+
+# Receitas (125, issue #286): versoes e ingredientes; escrita e leitura das rotas de receita exigem as duas.
+RECIPE_TABLES: tuple[str, ...] = ("food_recipe_versions", "food_recipe_ingredients")
+RECIPE_MIGRATION = "125"
+RECIPE_TABLES_MISSING_MESSAGE = (
+    "Receitas indisponíveis: as tabelas `food_recipe_versions` e `food_recipe_ingredients` (migração 125) "
+    "ainda não existem neste banco."
 )
 
 CHECKINS_TABLE = "nutrition_checkins"
@@ -331,6 +339,31 @@ def require_favorites_table(cursor: Any) -> None:
     """503 citando a 102 quando `user_favorite_foods` ainda não existe."""
     if not has_favorites_table(cursor):
         raise favorites_table_missing_error()
+
+
+def has_recipe_tables(cursor: Any) -> bool:
+    """As duas tabelas das receitas (125) existem NESTE schema? Sem DDL."""
+    return _has_tables(cursor, RECIPE_TABLES)
+
+
+def recipe_tables_missing_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={"error": "food_recipe_tables_missing", "migration": RECIPE_MIGRATION,
+                "message": RECIPE_TABLES_MISSING_MESSAGE},
+    )
+
+
+def require_recipe_tables(cursor: Any) -> None:
+    """503 citando a 125 quando as tabelas das receitas ainda não existem."""
+    if not has_recipe_tables(cursor):
+        raise recipe_tables_missing_error()
+
+
+def reset_recipe_tables_cache() -> None:
+    """Só para testes: esquece o cache positivo das tabelas de receita."""
+    for chave in [c for c in _present if c[1] == RECIPE_TABLES]:
+        _present.discard(chave)
 
 
 def has_checkin_tables(cursor: Any) -> bool:

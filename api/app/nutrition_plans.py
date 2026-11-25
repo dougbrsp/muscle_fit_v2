@@ -64,6 +64,7 @@ from .domain.nutrition.daily_target import (
     recompute_window,
     week_window,
 )
+from .domain.nutrition.manual_targets import macro_kcal_shares
 from .domain.nutrition.plan import (
     ERR_DRAFT_LIMIT,
     MAX_DRAFTS_PER_USER,
@@ -133,8 +134,8 @@ _PLAN_COLUMNS = (
     "energy_params_json, energy_model_version, carb_cycle_policy, "
     "effective_from, superseded_at, archived_at, published_at, created_at, updated_at"
 )
-# Sem a migração 123 a coluna `carb_cycle_policy` não existe: leitura e escrita usam as variantes SEM ela (a política fica
-# não é gravada nem lida: vale a padrão). Nenhuma rota responde 503 por isso.
+# Sem a migração 123 a coluna `carb_cycle_policy` não existe: leitura e escrita usam as variantes SEM ela (a política não
+# é gravada nem lida: vale a padrão). Nenhuma rota responde 503 por isso.
 _PLAN_COLUMNS_NO_POLICY = _PLAN_COLUMNS.replace("carb_cycle_policy, ", "")
 # `published_preview_json` (106) fica FORA de `_PLAN_COLUMNS` de propósito: é a prévia gravada na publicação (dezenas de KB
 # por plano) e nenhuma leitura de plano a usa; as listas de planos não pagam o peso (teto de 1 MiB da Data API).
@@ -428,12 +429,18 @@ def _no_published_plan(message: str) -> HTTPException:
 # ---------------------------------------------------------------------------
 
 
+def _day_with_shares(comp: DayComputation, today: date) -> dict[str, Any]:
+    """Dia da prévia + `macro_kcal_shares` (`{protein, carb, fat}`, fração das kcal pelo motor; `None` sem energia)."""
+    macros = comp.target.macros
+    return {**day_public(comp, today), "macro_kcal_shares": macro_kcal_shares(macros.protein_g, macros.carb_g, macros.fat_g)}
+
+
 def _target_detail(comp: DayComputation, today: date) -> dict[str, Any]:
     meta = comp.target
     alvo = meta.kcal_target.to_dict()
     alvo["clamped_by"] = nutrition_labels.limitation_items(meta.kcal_target.clamped_by)
     return {
-        **day_public(comp, today),
+        **_day_with_shares(comp, today),
         # Diferença REAL para o gasto total (já com gramas manuais, ciclo e prioridade); `kcal_target.delta_kcal`
         # é só a da estratégia.
         "kcal_delta": meta.kcal_delta,
@@ -549,7 +556,7 @@ def _preview_payload(
         "subject": hoje.subject.to_dict(),
         "target": _target_detail(hoje, today),
         "goal": _goal(hoje),
-        "week": [day_public(comp, today) for comp in semana],
+        "week": [_day_with_shares(comp, today) for comp in semana],
         # Os dias que a publicação de hoje de fato cria (do dia de hoje ao fim da semana): a tela só mostra estes.
         "publish_days": [dia.isoformat() for dia in publication_window(today, None).days()],
         "limitations": nutrition_labels.limitation_items(limitacoes),

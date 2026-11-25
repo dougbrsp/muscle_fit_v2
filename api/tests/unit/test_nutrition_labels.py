@@ -35,6 +35,7 @@ from app.domain.nutrition import macros as _macros
 from app.domain.nutrition import manual_targets as _mt
 from app.domain.nutrition import diary as _diary
 from app.domain.nutrition import plan as _plan
+from app.domain.nutrition import recipe as _recipe
 from app.domain.nutrition import strategy as _st
 from app.domain.nutrition import weekly_budget as _wb
 from app.domain.nutrition.phases import BreakProtocol, PhaseKind
@@ -108,7 +109,7 @@ def test_export_for_frontend():
     # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
     # N2 rodada 4: + manual_training_modes, manual_training_mode_labels, manual_training_mode_hints, default_manual_training_mode
     # D1/D2 (2026-11-04): + quick_entry, table_base
-    assert len(bloco) == 99  # 2026-11-22 (#248): + default_day_kind. 2026-11-20 (#242): + carb_cycle_policies/labels/hints, default_carb_cycle_policy. 2026-11-06 (Lote G): + adaptive_codes. 2026-11-06 (Lote C): + adaptive_tdee_mode, adaptive_field_hints, watch_calorie_modes/labels, default_watch_calorie_mode. 2026-11-05: + tdee_mode_hints, routine_levels/labels/factors, default_routine_level, auto_tdee_mode, intervals_sync_max_age_minutes; + adaptive_energy_labels (grupos confidence_level, calorie_mode, activity_flag, data_quality_flag, suspension_reason, unavailable_reason)
+    assert len(bloco) == 101  # 2026-11-22 (#248): + default_day_kind. 2026-11-20 (#242): + carb_cycle_policies/labels/hints, default_carb_cycle_policy. 2026-11-06 (Lote G): + adaptive_codes. 2026-11-06 (Lote C): + adaptive_tdee_mode, adaptive_field_hints, watch_calorie_modes/labels, default_watch_calorie_mode. 2026-11-05: + tdee_mode_hints, routine_levels/labels/factors, default_routine_level, auto_tdee_mode, intervals_sync_max_age_minutes; + adaptive_energy_labels (grupos confidence_level, calorie_mode, activity_flag, data_quality_flag, suspension_reason, unavailable_reason)
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {
@@ -211,6 +212,18 @@ _PREFIXADOS = {
     _ps.ERR_SUGGESTION_FIELD_INVALID,
     _diary.ERR_QUICK_ABOVE_WEIGHT,
     _diary.ERR_QUICK_VALUE_TOO_HIGH,
+    # L37: receita (`<código>:<índice ou campo>`).
+    _recipe.ERR_INVALID_INGREDIENT_AMOUNT,
+    _recipe.ERR_OVERRIDE_VALUE,
+    _recipe.LIMIT_INCOMPLETE,
+    _recipe.ERR_INGREDIENT_NOT_FOUND,
+    "recipe_ingredient_amount_out_of_range",
+    _recipe.ERR_INGREDIENT_IS_RECIPE,
+    _recipe.ERR_INGREDIENT_PORTION_NOT_FOUND,
+    _mm.LIMIT_ASSUMED_DENSITY,  # limitação de UM ingrediente da receita: `assumed_density:<índice>`
+    _mm.LIMIT_MISSING_QUANTITY,
+    _diary.ERR_UNIT_WITHOUT_CONVERSION,
+    _diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE,
 }
 
 
@@ -224,9 +237,33 @@ def _codigos_do_motor() -> set[str]:
 
 
 def test_todo_codigo_de_limitacao_da_meta_e_do_plano_tem_texto():
-    sem_texto = sorted(c for c in _codigos_do_motor() if c not in lb.LIMITATION_LABELS and c not in _PREFIXADOS)
+    sem_texto = sorted(c for c in _codigos_do_motor() if c not in lb.LIMITATION_LABELS and c not in _PREFIXADOS and c not in lb.CYCLE_FAT_LABELS)
     assert sem_texto == []
     assert set(lb.PREFIXED_LIMITATION_LABELS) == _PREFIXADOS
+
+
+def test_todo_codigo_de_receita_tem_rotulo_pt_br():
+    do_motor = {v for n, v in vars(_recipe).items() if n.startswith(("ERR_", "LIMIT_")) and isinstance(v, str)}
+    das_rotas = {"food_is_recipe"}  # os demais códigos da rota moram no motor (`recipe.ERR_INGREDIENT_*`, `ERR_VERSION_CONFLICT`)
+    assert do_motor and {_recipe.ERR_VERSION_CONFLICT, _recipe.ERR_INGREDIENT_NOT_FOUND} <= do_motor
+    # Erro de chave de substituição não ecoa a chave recebida: rótulo sem campo.
+    assert "{" not in lb.limitation_label(_recipe.ERR_OVERRIDE_FIELD)
+    assert lb.limitation_label(f"{_recipe.ERR_OVERRIDE_FIELD}:<script>") == f"{_recipe.ERR_OVERRIDE_FIELD}:<script>"
+    for codigo in do_motor | das_rotas:
+        rotulo = lb.LIMITATION_LABELS.get(codigo) or lb.PREFIXED_LIMITATION_LABELS.get(codigo)
+        assert rotulo, codigo
+        assert rotulo != codigo and "_" not in rotulo, codigo
+
+
+def test_erros_de_quantidade_do_ingrediente_tem_rotulo_com_indice():
+    codigos = set(_diary._AMOUNT_ERRORS.values()) | {_diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE}
+    assert len(codigos) == 3
+    for codigo in codigos:
+        texto = lb.limitation_label(f"{codigo}:2")
+        assert texto != f"{codigo}:2" and "_" not in texto, codigo
+        assert texto.startswith("Ingrediente 3: "), codigo  # código 0-based, texto 1-based
+        assert lb.limitation_label(f"{codigo}:0").startswith("Ingrediente 1: "), codigo
+        assert lb.limitation_label(codigo) == lb.LIMITATION_LABELS[codigo]  # diário inalterado
 
 
 def test_codigo_com_campo_recebe_o_rotulo_do_campo():
@@ -276,3 +313,30 @@ def test_campos_do_plano_tem_rotulo():
     assert _ee.LIMIT_MISSING_ACTIVITY_LEVEL in lb.LIMITATION_LABELS
     assert _macros.LIMIT_MISSING_PROTEIN_BASIS in lb.LIMITATION_LABELS
     assert _cc.LIMIT_CARB_FLOOR_PREVENTS_CYCLE in lb.LIMITATION_LABELS
+
+
+def test_densidade_assumida_de_ingrediente_da_receita_diz_qual_ingrediente_e_cita_a_densidade_do_dono():
+    texto = lb.limitation_label(f"{_mm.LIMIT_ASSUMED_DENSITY}:1")
+    assert texto.startswith("Ingrediente 2: ") and f"{_mm.DEFAULT_DENSITY_G_PER_ML:g} g por ml" in texto
+    assert lb.limitation_label(_mm.LIMIT_ASSUMED_DENSITY) == lb.LIMITATION_LABELS[_mm.LIMIT_ASSUMED_DENSITY]  # diário inalterado
+
+
+def test_rotulo_do_teto_do_ingrediente_da_receita_cita_o_teto_do_motor():
+    from app.domain.nutrition import recipe
+
+    texto = lb.limitation_label(f"{recipe.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE}:2")
+    assert texto.startswith("Ingrediente 3: ") and f"{recipe.RECIPE_INGREDIENT_AMOUNT_MAX:g}" in texto
+
+
+def test_rotulos_da_gordura_do_ciclo_citam_dia_e_fracao():
+    from app.domain.nutrition import carb_cycling as cc
+    from app.domain.nutrition import plan as plan_mod
+
+    assert lb.limitation_label(cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED) != cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED
+    assert lb.limitation_label(cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED) == (
+        "gordura base fora da faixa da estratégia: ciclo não aplicado neste dia"
+    )
+    for codigo in (plan_mod.ERR_CYCLE_FAT_ABOVE_MAX, plan_mod.WARN_CYCLE_FAT_BELOW_RANGE, plan_mod.WARN_CYCLE_FAT_ABOVE_RANGE):
+        texto = lb.limitation_label(f"{codigo}:low:46")
+        assert "Ciclo de carboidrato" in texto and "dia baixo" in texto and "46%" in texto
+    assert lb.limitation_label(f"{plan_mod.ERR_CYCLE_FAT_BELOW_MIN}:xx:4") == f"{plan_mod.ERR_CYCLE_FAT_BELOW_MIN}:xx:4"

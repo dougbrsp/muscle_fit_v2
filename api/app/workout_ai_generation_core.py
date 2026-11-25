@@ -20,6 +20,8 @@ depuracao/auditoria):
 - "nutrition-meal-parse"        -> POST /nutrition/meals/parse (nutricao L5b; logica em
                                    nutrition_meal_parse_worker.py; job type do dono
                                    `domain/nutrition/ai_usage.MEAL_PARSE_JOB_TYPE`)
+- "resistance-profile-suggest"  -> POST /resistance-profiles/suggest (#288; logica em
+                                   resistance_profile_ai.py)
 
 Mantido o comportamento exato dos 3 endpoints sincronos anteriores (mesmas
 excecoes - `HTTPException`, `SetEvaluationError`, `ExerciseSummaryError`,
@@ -77,6 +79,7 @@ from .exercise_summary_ai import ExerciseSummaryError, summarize_exercise
 from .goal_prompt_context import non_default_goals
 from .domain.nutrition.ai_usage import MEAL_PARSE_JOB_TYPE, PLAN_SUGGESTION_JOB_TYPE
 from .insights_core import JOB_TYPE_INSIGHTS, dispatch_insights
+from .domain.resistance_profile import SUGGEST_JOB_TYPE as JOB_TYPE_RESISTANCE_SUGGEST
 from .observability import EVENT_AI_SET_EVAL_CLAMPED, EVENT_WORKOUT_SUMMARY_REUSED, log_event
 from .set_types import WORKING
 from .services import activity_detail, exercise_summary_context, save_activity_ai_summary
@@ -120,6 +123,11 @@ def dispatch_workout_ai_generation(
         from .nutrition_meal_parse_worker import dispatch_meal_parse
 
         return dispatch_meal_parse(payload, user_id, ai_usage_id)
+    if job_type == JOB_TYPE_RESISTANCE_SUGGEST:
+        # Import tardio, pelo mesmo motivo (#288): a cadeia da IA so carrega no worker.
+        from .resistance_profile_ai import dispatch_suggest
+
+        return dispatch_suggest(payload, user_id, ai_usage_id)
     if job_type == PLAN_SUGGESTION_JOB_TYPE:
         # Import tardio, pelo mesmo motivo (N6).
         from .nutrition_plan_suggestion_ai import dispatch_plan_suggestion

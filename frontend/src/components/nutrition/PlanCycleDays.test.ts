@@ -11,6 +11,7 @@ import {
   DEFAULT_DAY_KIND,
   WEEKDAY_OPTIONS,
 } from '@/lib/nutrition-constants';
+import type { NutritionDayTarget } from '@/lib/nutrition-types';
 import { cyclePolicyPayload } from '@/lib/nutrition-cycle-policy';
 import { flatCycleDays, PlanCycleDays } from './PlanCycleDays';
 
@@ -45,7 +46,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-async function montar(enabled: boolean, onPolicyChange = vi.fn()) {
+async function montar(enabled: boolean, onPolicyChange = vi.fn(), week?: NutritionDayTarget[]) {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -65,6 +66,7 @@ async function montar(enabled: boolean, onPolicyChange = vi.fn()) {
             onChange: vi.fn(),
             policy: DEFAULT_CARB_CYCLE_POLICY,
             onPolicyChange,
+            week,
           }),
         ),
       ),
@@ -103,6 +105,29 @@ describe('PlanCycleDays', () => {
       radio.click();
     });
     expect(onPolicyChange).toHaveBeenCalledWith(outra.value);
+  });
+
+  it('mostra gordura em g e % de cada dia (da API) e o aviso de carbo limitado com o rótulo pronto', async () => {
+    const dia = (local_date: string, fat_g: number, share: number, limitations: object[]) =>
+      ({ local_date, fat_g, limitations, macro_kcal_shares: { protein: 0.3, carb: 0.4, fat: share } }) as unknown as NutritionDayTarget;
+    await montar(true, vi.fn(), [
+      dia('2026-11-23', 70, 0.25, []), // segunda
+      dia('2026-11-24', 90, 0.3, [
+        { code: 'fat_compensation_carb_limited', label: 'Carbo limitado pelo piso.' },
+        { code: 'fat_compensation_cycle_skipped', label: 'Ciclo não aplicado neste dia.' },
+      ]), // terça
+    ]);
+    const linhas = Array.from(host.querySelectorAll('[data-testid="dia-gordura"]')).map((e) => e.textContent);
+    expect(linhas).toEqual(['Gordura 70 g (25% das kcal)', 'Gordura 90 g (30% das kcal)']);
+    expect(Array.from(host.querySelectorAll('[data-testid="dia-aviso-ciclo"]')).map((e) => e.textContent)).toEqual([
+      'Carbo limitado pelo piso.',
+      'Ciclo não aplicado neste dia.',
+    ]);
+  });
+
+  it('sem prévia não mostra gordura por dia', async () => {
+    await montar(true);
+    expect(host.querySelector('[data-testid="dia-gordura"]')).toBeNull();
   });
 
   it('ciclo desligado: sem seletores na tela, mas a política segue sendo enviada', async () => {

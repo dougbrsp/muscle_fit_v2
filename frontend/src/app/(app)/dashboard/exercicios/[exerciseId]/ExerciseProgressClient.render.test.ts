@@ -108,7 +108,8 @@ describe('ExerciseProgressContent: tendência da janela', () => {
     const title = host.querySelector('[data-testid="window-trend-title"]') as HTMLElement;
     expect(title.textContent).toBe(SCOPE.label);
     expect(title.getAttribute('tabindex')).toBe('0');
-    expect(title.getAttribute('aria-label')).toBe(`${SCOPE.label}. ${SCOPE.description}`);
+    // A descrição é anunciada só pelo aria-describedby do Tooltip (abre no foco); o aria-label a repetiria.
+    expect(title.hasAttribute('aria-label')).toBe(false);
     expect(title.hasAttribute('title')).toBe(false);
   });
 

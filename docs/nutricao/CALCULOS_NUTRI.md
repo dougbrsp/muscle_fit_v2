@@ -439,3 +439,24 @@ Os itens abaixo vêm dos ADRs e do mapa, e foram verificados no código.
 - **MET por tipo de sessão é caminho morto em produção**: `met_for_session` aceita o tipo (02050, 02052, 02055), mas `day_context_for` nunca preenche `session_kind`. Só o teste unitário define o tipo (`test_nutrition_daily_target.py`). Em produção, toda sessão sem kcal usa MET 3,5 (`nutrition_days.py` chama `met_for_session(None)`).
 - **Exemplo da ADR 0007**: a ADR diz "pré-ciclo 2.940 kcal e base sem treino ~2.037 kcal". Os valores gravados do usuário 1 dão pré-ciclo ≈ 2.932 e base ≈ 2.058. A diferença sugere outro cenário no exemplo. A ADR não diz qual.
 - **Dedup e manutenção manual**: a ADR 0008 dizia que a correção manual não se aplicava ao explícito; a ADR 0016 a estendeu a esses modos (seção 4.5).
+
+## 9. Receitas (alimento composto)
+
+Dono do cálculo: `api/app/domain/nutrition/recipe.py`. Decisão e contrato: [ADR 0035](../adr/0035-receitas-como-alimento-composto.md). A receita é uma linha de `food_items` com `source='recipe'`; o motor só calcula e a rota grava. Os valores abaixo são desenho da implementação, sem fonte bibliográfica, e são estimativas pela composição e pelo rendimento.
+
+- **Total de cada campo** de `catalog.PER_100_FIELDS`: soma, por ingrediente, de (quantidade na base × valor por 100 do snapshot), pelo `meal_math.sum_scaled_fields`.
+- **Valor por 100 g da receita pronta**: total ÷ peso final × 100, pelo `meal_math.per_reference_from_serving`.
+- **Peso cru**: soma só os gramas. **Ingrediente em ml** entra nos nutrientes (valor por 100 ml × ml), mas ml não vira massa e não entra no peso cru.
+- **Rendimento**: peso final ÷ peso cru, sem ingrediente em ml. Com qualquer ingrediente em ml, o rendimento NÃO é calculado (fica vazio) e a trava de rendimento não se aplica; vale só o teto absoluto do peso final (`RECIPE_FINAL_WEIGHT_MAX_G`). Sem ml, a faixa de 10% a 500% é a das constantes: fora dela a receita é recusada (`recipe_yield_implausible`); a faixa só pega erro de digitação, não modela cozimento.
+- **Campo incompleto**: se algum ingrediente não informa um campo, o campo vai para `incomplete_fields` e o valor por 100 g dele fica `None`. Nunca vira zero. O total é só um mínimo. A linha da receita no catálogo exige só energia (`catalog.RECIPE_REQUIRED_PER_100_FIELDS`, lote 37c): macro sem informação fica nulo na linha, nunca zero; sem energia, 400 `invalid_food`.
+- **Energia**: a checagem de Atwater é a do dono existente, `meal_math.atwater_check`; inconsistência gera o aviso, sem bloquear.
+- **Ajuste manual**: `apply_overrides` devolve os efetivos, preserva os calculados e lista os campos substituídos. Só campos de `PER_100_FIELDS`, valor não negativo e plausível. Valor nulo significa "sem substituição": o campo usa o calculado.
+- **Limitações**: as do cálculo e as dos ingredientes (ex.: densidade gramas↔ml, de `meal_math.resolve_amount`). A versão grava os códigos em `limitation_codes`, e a leitura devolve a mesma lista (lote 37b).
+- **Não modelado**: retenção ou perda de nutriente no cozimento.
+- **Teto da quantidade do ingrediente** (lote 40): `RECIPE_INGREDIENT_AMOUNT_MAX` = 20000 g ou ml na base, por ingrediente (igual a `RECIPE_FINAL_WEIGHT_MAX_G`). É maior que o do item do diário (2 kg, `diary.ITEM_AMOUNT_MAX`), porque a receita junta mais massa que uma porção. Decisão do usuário de 23/11/2026. Sem conversão de unidade, vale o erro do diário (`ingredient_amount_errors`).
+- **Edição preserva o snapshot** (lote 40): ingrediente igual ao da versão atual (`ingredient_key`: alimento, quantidade, unidade e porção) reaproveita o snapshot gravado, mesmo que o catálogo tenha mudado. "Atualizar ingredientes e recalcular" (`refresh_ingredients`) adota o catálogo atual. Ingrediente indisponível continua válido pelo snapshot. Estado por ingrediente: `ingredient_catalog_status` (`current`, `outdated` ou `unavailable`).
+- **Cópia** (lote 40): `copy_name` = nome sem espaços nas pontas + ` (cópia)`, cortado para `RECIPE_NAME_MAX_CHARS` = 255.
+
+Constantes em `recipe.py`: `RECIPE_ENGINE_VERSION = "recipe-v1"`, `RECIPE_MAX_INGREDIENTS` = `diary.MEAL_MAX_ITEMS` (hoje 30), `RECIPE_YIELD_MIN_SHARE = 0.10`, `RECIPE_YIELD_MAX_SHARE = 5.0`, `RECIPE_FINAL_WEIGHT_MAX_G = 20000.0`, `RECIPE_INGREDIENT_AMOUNT_MAX` (igual), `RECIPE_NAME_MAX_CHARS = 255`, `RECIPE_COPY_SUFFIX = " (cópia)"`.
+
+Obrigatório da linha de receita não é de `recipe.py`: é `catalog.RECIPE_REQUIRED_PER_100_FIELDS = ("energy_kcal",)` (`api/app/domain/nutrition/catalog.py`, lote 37c), aplicado em `nutrition_recipes.py::_food_values`.

@@ -144,6 +144,7 @@ import { PUBLISH_LABEL, SAVE_DRAFT_LABEL, draftSavedMessage, publishNotice } fro
 import { BlurCommitTextInput, BlurCommitTextarea } from './BlurCommitInputs';
 import { TemplateDraftBanner } from './TemplateDraftBanner';
 import { TemplateVersionHistoryPanel } from './TemplateVersionHistory';
+import { RedundancyDiagnosticPanel } from './RedundancyDiagnosticPanel';
 import { PeriodizationDraftPanel } from './PeriodizationDraftPanel';
 import { SlotDragPreview, SlotEditor } from './SlotEditor';
 import type { SortableData } from './sortable';
@@ -371,6 +372,7 @@ export function WorkoutPlanTemplateBuilderClient() {
   }
 
   const [assignOpened, { open: openAssign, close: closeAssign }] = useDisclosure(false);
+  const [redundancyOpen, { toggle: toggleRedundancy }] = useDisclosure(false);
 
   const templateQuery = useQuery({
     queryKey: ['workout-plan-template', numericId],
@@ -952,6 +954,15 @@ export function WorkoutPlanTemplateBuilderClient() {
           <Button
             variant="light"
             color="brand"
+            onClick={toggleRedundancy}
+            disabled={isNew || !numericId}
+            aria-expanded={redundancyOpen}
+          >
+            Diagnóstico de redundância
+          </Button>
+          <Button
+            variant="light"
+            color="brand"
             leftSection={<IconUsers size={16} />}
             onClick={openAssign}
             disabled={isNew || !itemCtrl.canAssign}
@@ -981,6 +992,8 @@ export function WorkoutPlanTemplateBuilderClient() {
           )}
         </Group>
       </Group>
+
+      {redundancyOpen && !isNew && numericId && <RedundancyDiagnosticPanel templateId={numericId} />}
 
       {showReadOnlyNotice && (
         <Alert color="blue" icon={<IconInfoCircle size={16} />}>

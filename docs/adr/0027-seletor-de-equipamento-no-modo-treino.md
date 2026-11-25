@@ -35,11 +35,11 @@ Restrições reais:
 ## Decisão
 
 1. **Validação do equipamento explícito no servidor.** `api/app/workout_sessions.py::ensure_session_equipment(cur, session, mapping_id, equipment_id)` (L914) é chamada em `add_session_exercise` (L962) só quando `equipment_id` vem explícito, e depois da busca por `client_key` (L947-949). Assim, o reenvio idempotente de um exercício já criado não revalida. Regra final, na ordem em que o código a aplica:
-   - associação inexistente: HTTP 422 `equipment_not_found` (L922);
-   - sessão com academia e associação de outra academia: 422 `equipment_not_in_session_gym` (L927);
-   - sessão sem academia: a academia não é conferida, pois não há contra o que comparar; o evento `session_equipment_accepted_without_gym`, só com ids, vai a log (L925);
-   - par recusado por `is_pair_coherent`, com ou sem academia: 422 `equipment_pair_incoherent` (L928-929);
-   - associação INATIVA: aceita, e o evento `session_equipment_inactive_accepted` vai a log (L930-931).
+   - associação inexistente, ou de outra academia numa sessão com academia: HTTP 422 `equipment_not_in_session_gym`, com a mensagem "Equipamento não disponível nesta academia." (L921-923). Inexistente é recusado também sem academia na sessão. Lote 44 (#284): `equipment_not_found` deixou de existir, para não revelar se o equipamento existe em outra academia;
+   - sessão sem academia: a academia não é conferida, pois não há contra o que comparar; o evento `session_equipment_accepted_without_gym`, só com ids, vai a log (L926);
+   - par recusado por `is_pair_coherent`, com ou sem academia: 422 `equipment_pair_incoherent` (L927-928);
+   - associação INATIVA: aceita, e o evento `session_equipment_inactive_accepted` vai a log (L929-930).
+Lote 44 (#284), academia do corpo em Importação e Registro (`services.resolve_active_gym_id`): a academia já gravada na atividade é sempre aceita, mesmo inativa, para que reenvio offline e edição de treino antigo não falhem; o 422 `gym_not_found` vale só para MUDANÇA para academia inexistente ou inativa; nome sem match mantém a gravada, e sem gravada dá 422; a reimportação preserva a academia lida antes do DELETE; a adoção de academia pelo equipamento só vale para academia ativa (`services.validate_explicit_equipment`); o LIKE do nome escapa `\ % _`.
 2. **Dono da coerência.** `api/app/domain/equipment_pair.py::is_pair_coherent` (L102). A rota só chama o predicado e não repete a regra.
 3. **Convenção de carga nas opções.** `GET /gym-equipment` (`api/app/gyms.py::list_gym_equipment`, L737) devolve em cada item `load_convention`. A consulta fica no corpo da rota. A expressão e o join vêm do dono (`load_conventions.load_convention_select_expr`, L344, e `equipment_exercises_join_sql`, L181), chamados em `gyms.list_gym_equipment` (L765 e L788). O campo é lido com `row.get`, e o nulo ou ausente é normalizado por `load_conventions.normalize_load_convention` (L71; `gyms.py:818`). `GET /gym-equipment/recommend` e `/recommend-all` também trazem o campo desde o lote 32 (ver a atualização de 22/11/2026, #244).
 4. **Seletor no Modo Treino (web e celular).** `frontend/src/app/(fullscreen)/modo-treino/EquipmentSubstituteModal.tsx` tem busca e as seções "Mesmo exercício" e "Mesmo grupo muscular", montadas por `frontend/src/lib/equipment-picker.ts` (`buildEquipmentPickerSections`, L41; `normalizeSearchText`, L22; `currentLoadConvention`, L65; `needsLoadConventionWarning`, L74). Cada opção mostra a convenção pelo rótulo do dono (`loadConventionLabel`, `frontend/src/lib/equipment-exercises-types.ts:52`). Ao escolher convenção diferente, a tela avisa e permite.
@@ -64,7 +64,7 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 ## Consequências
 
 - **Dados.** Nenhuma coluna nova e nenhuma migração. Nenhum registro existente muda (ver `docs/motores/FONTES_DA_VERDADE.md`, "Lote 10 de 20/11/2026 (#163, primeira parte)").
-- **Contrato.** `POST /workout-sessions/{id}/exercises` pode responder 422 com os três códigos novos. `GET /gym-equipment` ganha `load_convention` por item (campo aditivo).
+- **Contrato.** `POST /workout-sessions/{id}/exercises` pode responder 422 com `equipment_not_in_session_gym` ou `equipment_pair_incoherent` (no Lote 44, `equipment_not_found` foi retirado). `GET /gym-equipment` ganha `load_convention` por item (campo aditivo).
 - **Medições (20/11/2026).** Em produção, por leitura: 110 atividades, 12 sem academia (nenhuma do Modo Treino); 85 fichas, nenhuma sem academia; nenhuma ficha com equipamento de outra academia; nenhum treino feito em academia diferente da academia da ficha. No banco de desenvolvimento, cópia de produção: 67 exercícios com par incoerente (49 pares), o mais recente de 19/09/2026, nenhum criado pelo Modo Treino; os 108 criados pelo Modo Treino (desde 03/11/2026) são todos coerentes. Conclusão: a recusa de par incoerente não atinge o uso atual do Modo Treino; os pares incoerentes antigos vieram de importação e edição, que não são validadas. Detalhes no mapa, "Lote 10 de 20/11/2026".
 - **Mapa.** `docs/motores/FONTES_DA_VERDADE.md` ganha duas linhas na tabela de regras: "Equipamento explícito da sessão no Modo Treino" (logo após a linha "Carga da sessão e adoção pela trilha", antes da linha "Trilha", L119) e "Convenção de carga nas opções de academia" (logo após a convenção de carga). O bloco de impacto do Lote 10 fica depois do bloco do Lote 9.
 - **Próximas decisões.** Catálogo global e permissão de acrescentar equipamento (segunda parte da #163). A validação dos outros caminhos (importação e Registro) foi feita no lote 32.
@@ -78,7 +78,7 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 - (e) Sessão sem academia não tem seletor na tela. O servidor aceita equipamento existente e coerente sem comparar academia e registra em log (`session_equipment_accepted_without_gym`).
 - (f) No Registro, o aviso de convenção só aparece quando a convenção do equipamento antigo é conhecida: ele precisa estar na lista do grupo muscular do formulário (`equipment-change-confirm.ts`, L52: sem o vínculo na lista, a convenção vira nula).
 - (g) RESOLVIDO no lote 32: importação e Registro validam o equipamento explícito pela mesma função do Modo Treino, com a regra de compatibilidade da atualização. O caminho por nome (`equipment_name`, `resolve_equipment_id`) não é validado.
-- (h) Treino offline cujo equipamento foi REMOVIDO da academia antes da sincronização é recusado com `equipment_not_found`.
+- (h) Treino offline cujo equipamento foi REMOVIDO da academia antes da sincronização é recusado com `equipment_not_in_session_gym` (Lote 44, #284; antes, `equipment_not_found`).
 - (i) Nenhuma tela vista em celular real.
 - (j) Os 67 exercícios antigos com par incoerente (49 pares, medidos no banco de desenvolvimento, cópia de produção) não são corrigidos. A validação vale só para o POST novo. RESOLVIDO em 22/11/2026 (#244) por escolha do usuário: 23 são corrigidos pela migração 124 e os outros 44 ficam como registrados (ver "Atualização de 22/11/2026 (#244, correção dos 23 registros antigos)").
 - (k) O aviso de convenção do seletor (`EquipmentSubstituteModal.tsx`, L316) não recebe foco nem rolagem automática. Se a lista estiver rolada, o aviso pode ficar fora da área visível ao tocar numa opção.
@@ -144,7 +144,7 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 
 ## Atualização de 22/11/2026 (lote 32, #244: validação na Importação e no Registro, convenção nas recomendações)
 
-**Validação do equipamento explícito fora do Modo Treino.** `services.validate_explicit_equipment` (`api/app/services.py`) aplica a MESMA validação do Modo Treino (`workout_sessions.ensure_session_equipment`), com os mesmos 422 (`equipment_not_found`, `equipment_not_in_session_gym`, `equipment_pair_incoherent`). Chamadores:
+**Validação do equipamento explícito fora do Modo Treino.** `services.validate_explicit_equipment` (`api/app/services.py`) aplica a MESMA validação do Modo Treino (`workout_sessions.ensure_session_equipment`), com os mesmos 422 (`equipment_not_in_session_gym`, `equipment_pair_incoherent`; ver Lote 44 abaixo). Chamadores:
 
 - `upsert_activity` (`POST /activities`, e `PUT /activities/{id}` por `update_activity`), para cada exercício com `equipment_id` explícito;
 - `_update_exercise_log_tx` (`PUT /exercises/logs/{id}`, o Registro).
@@ -179,3 +179,45 @@ Com isso, os registros antigos de par incoerente seguem aceitos enquanto ningué
 **Verificação.** Relatado pelo lote 34 e executado fora do CI; não reexecutado nesta atualização de documentação: suíte de resiliência do Modo Treino (`frontend/e2e/workout-resilience`, chromium 390) com 31 casos passando, incluindo a troca pelo nome no descanso do bloco intensivo. Vitest das alterações: não reexecutado aqui.
 
 **Pendente de usuário.** Validação em celular real (seletor, nome tocável, tela baixa) e em navegador.
+
+## Lote 44 (#284, segurança da Importação e do Registro, 24/11/2026)
+
+Sem migração. Regras novas e motivo:
+
+- **Código unificado.** Equipamento inexistente e de outra academia respondem o mesmo 422 `equipment_not_in_session_gym`, com a mensagem "Equipamento não disponível nesta academia.". `equipment_not_found` deixou de existir. Motivo: a resposta não pode revelar se o equipamento existe em outra academia. Par incoerente segue `equipment_pair_incoherent`.
+- **Academia do corpo validada.** `services.resolve_active_gym_id` recusa com 422 `gym_not_found` a academia (id ou nome) inexistente ou inativa, antes de gravar. Academias são compartilhadas por desenho (`api/app/gyms.py:279-297`), então não há checagem de posse.
+- **Academia adotada do equipamento.** Treino sem academia adota a do primeiro equipamento explícito válido (`services.validate_explicit_equipment`; Importação e Registro). Depois disso, equipamento de outra academia no mesmo treino recusa com `equipment_not_in_session_gym`.
+
+Impacto em produção: medido em 24/11/2026 pelo Tech Lead, em produção, só leitura (SELECT pela RDS Data API):
+
+- 112 atividades; 12 sem academia, nenhuma com equipamento (nenhuma delas adotaria academia);
+- 0 atividades com academia inexistente ou inativa;
+- 0 atividades sem academia com equipamentos de academias diferentes;
+- 0 exercícios com equipamento de outra academia;
+- 0 exercícios com equipamento inexistente;
+- 1 academia inativa no cadastro.
+
+Conclusão: nenhum dado existente passa a falhar em reenvio ou edição. Nenhuma migração e nenhum dado gravado muda.
+
+Smoke da promoção (pós-deploy, obrigatório): `POST /activities` com academia inexistente deve responder 422 `gym_not_found`; `PUT /exercises/logs/{id}` com equipamento de outra academia deve responder 422 `equipment_not_in_session_gym`.
+
+## Lote 49 (fechamento da #284, branch `fix/sobras-284-l49`, sem commit)
+
+Testes: a suíte unitária do `api` inteira roda verde, exceto a falha conhecida `test_sem_mojibake`; o Vitest do `frontend` inteiro roda verde. A integração com MySQL roda só no CI.
+
+**(a) O que mudou**
+
+- Testes do Registro em `api/tests/unit/test_registro_importacao_academia_validada.py`: equipamento por nome resolvido na academia gravada (`test_registro_sem_academia_no_corpo_resolve_equipamento_por_nome_na_gravada`); adoção de academia pelo equipamento gravada no UPDATE (`test_registro_adocao_grava_a_academia_do_equipamento_no_update`, que confere o `gym_id` enviado ao `UPDATE activities`); e os casos de academia gravada inativa repetida e de equipamento de outra academia (`test_registro_equipamento_valida_na_academia_do_corpo_nao_na_gravada`).
+- `services._update_exercise_log_tx` (`api/app/services.py`): a academia da atividade vem junto com o exercício, no SELECT já existente, em uma de duas projeções de `activity_gym_id`: `a.gym_id AS activity_gym_id` no ramo com `user_id` (JOIN com `activities`) e `(SELECT gym_id FROM activities WHERE id = exercises.activity_id) AS activity_gym_id` no ramo sem `user_id`. Não há leitura extra de `gym_id`: `test_registro_adocao_grava_a_academia_do_equipamento_no_update` afirma que nenhum `SELECT gym_id FROM activities` separado roda.
+- `user_id` é obrigatório (sem valor padrão) em `upsert_activity` (L518), `update_activity` (L756) e `delete_activity` (L782), em `api/app/services.py`. Nenhum chamador passa a depender de padrão.
+
+**(b) Decisões de não mudar, com o motivo**
+
+1. **Cores do seletor no Modo Treino.** O seletor usa as classes de `frontend/src/app/(fullscreen)/modo-treino/workout-mode.module.css`, que lê os tokens `--wm-*` (surface, border, orange, text, success etc.; 101 ocorrências de `var(--` no arquivo). Esses tokens são o tema escuro próprio do Modo Treino e não seguem o tema global do app. Não mudamos: a tela inteira do Modo Treino usa o mesmo conjunto. Conferência visual fica com o usuário, no aparelho. Correção ao pedido original: o arquivo não usa cores fixas em todo o conteúdo; a razão é o tema próprio via tokens.
+2. **Travas de envio e de confirmação sob concorrência.** Cobertas pela transação do servidor e pelos testes com fake. Sem teste em banco real: a integração roda só no CI e não tem cenário de concorrência. Risco aceito e registrado.
+3. **Aviso de convenção de carga no Registro.** O aviso lê `load_convention` da API (`GET /gym-equipment`, lote 32) e não calcula nada no frontend. Os rótulos de convenção são espelhados do dono (`frontend/src/lib/equipment-exercises-types.ts`, `loadConventionLabel`, L52), com teste de espelho. Limite (f) acima segue valendo: sem o vínculo na lista do grupo muscular, a convenção antiga vira nula. Não reconferido nesta passada: o teste de espelho.
+4. **`user_id` opcional em `services.update_exercise_log`.** Mantido (`user_id: int | None = None`, `api/app/services.py`) porque os testes do Registro chamam `_update_exercise_log_tx` com `None` (ramo sem usuário, em `test_registro_importacao_academia_validada.py`). A única rota, `update_exercise_log_by_id` em `api/app/main.py`, sempre passa `identity.user_id`. Risco: um chamador novo que omita o argumento cai no ramo sem filtro de dono; hoje não existe esse chamador.
+
+## Impacto em produção
+
+Lote 49: nenhuma mudança de dado, de migração nem de contrato. Os testes e a leitura do SELECT não alteram nada gravado; `user_id` obrigatório só afeta chamada interna sem o argumento, que o código atual não tem (conferido por busca em `api/app`). Sem medição nova.

@@ -918,13 +918,12 @@ def ensure_session_equipment(cur, session: dict[str, Any], mapping_id: Any, equi
     (ficha em andamento pode referenciar uma desativada depois) e vai a log."""
     cur.execute("SELECT gym_id, is_active FROM gym_equipment WHERE id = %s", (int(equipment_id),))
     row = cur.fetchone()
-    if not row:
-        raise _equipment_refused("equipment_not_found", "Equipamento não encontrado.")
+    if not row or (session.get("gym_id") and int(row["gym_id"]) != int(session["gym_id"])):
+        # #284: inexistente e de outra academia dão o MESMO código/mensagem (não revela existência).
+        raise _equipment_refused("equipment_not_in_session_gym", "Equipamento não disponível nesta academia.")
     if not session.get("gym_id"):
         # Atividade legada/manual sem academia: nada contra o que comparar.
         log_event("session_equipment_accepted_without_gym", gym_equipment_id=int(equipment_id), mapping_id=mapping_id)
-    elif int(row["gym_id"]) != int(session["gym_id"]):
-        raise _equipment_refused("equipment_not_in_session_gym", "Este equipamento não pertence à academia do treino.")
     if not is_pair_coherent(cur, mapping_id, equipment_id):
         raise _equipment_refused("equipment_pair_incoherent", "Este equipamento não serve a este exercício.")
     if not row["is_active"]:
@@ -1274,13 +1273,14 @@ def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: i
     de ordem muda a posicao ordinal das seguintes; regrava o `rpe_target_planned`
     delas (mesma transacao, mesma composicao do POST, dono `effective_intensity`).
     Posicao = ordem entre TODAS as de trabalho, pendentes inclusive (como o COUNT
-    do POST). So regrava as confirmadas, de repeticoes, sem protocolo e com
+    do POST). So regrava as seguintes confirmadas, de repeticoes, sem protocolo,
+    SEM `technique_code` (serie de tecnica fica fora, ADR 0026/PR #287) e com
     esperado ja gravado; so quando o valor muda. Nao toca `rpe_target_effective`."""
     plan_rpe = effective_intensity.plan_rpe_target(exercise_row.get("prescription_json"), exercise_row.get("plan_rpe_target"))
     if not effective_intensity.has_planned_rpe_ramp(plan_rpe):
         return
     cur.execute(
-        "SELECT id, set_number, reps_pending, measure, rpe_target_source, rpe_target_planned FROM exercise_sets "
+        "SELECT id, set_number, reps_pending, measure, rpe_target_source, technique_code, rpe_target_planned FROM exercise_sets "
         f"WHERE exercise_id = %s AND {sql_is_working('set_type')} ORDER BY set_number FOR UPDATE",
         (exercise_id,),
     )
@@ -1290,6 +1290,7 @@ def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: i
             or row.get("reps_pending")
             or not is_rep_based(row.get("measure"))
             or row.get("rpe_target_source") is not None
+            or row.get("technique_code")  # ADR 0026: serie de tecnica fica fora
             or row.get("rpe_target_planned") is None
         ):
             continue
@@ -1566,7 +1567,7 @@ def add_session_set(
             # antes dele): a marca gravada e a contagem de series de trabalho.
             cur.execute(f"SELECT {FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE", (exercise_id,))
             locked_row = cur.fetchone()
-            if locked_row and payload.exercise_form_practice is not None:
+            if locked_row:
                 exercise_row[FORM_PRACTICE_COLUMN] = locked_row.get(FORM_PRACTICE_COLUMN)
             # Sem o campo ainda conta (sem trava): a resposta informa `form_practice_locked`.
             working_before = _working_sets_recorded(cur, exercise_id, locking=payload.exercise_form_practice is not None)

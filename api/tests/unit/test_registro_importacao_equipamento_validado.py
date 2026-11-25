@@ -27,7 +27,7 @@ class _Cur:
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
         self.queries += 1
-        if flat.startswith("SELECT gym_id, is_active FROM gym_equipment"):
+        if flat.startswith(("SELECT gym_id, is_active FROM gym_equipment", "SELECT ge.gym_id, ge.is_active FROM gym_equipment ge JOIN gyms")):
             self._one = self.ge.get(params[0])
         elif flat.startswith("SELECT ge.id, COALESCE"):
             self._all = [{"id": i, "exercise_id": self.serves[i]} for i in params if i in self.serves]
@@ -52,7 +52,7 @@ def test_equipamento_coerente_da_academia_passa():
 def test_equipamento_inexistente_422():
     with pytest.raises(HTTPException) as exc:
         services.validate_explicit_equipment(_Cur(), GYM, 11, 555)
-    assert _codigo(exc) == (422, "equipment_not_found")
+    assert _codigo(exc) == (422, "equipment_not_in_session_gym")
 
 
 def test_equipamento_de_outra_academia_422():
@@ -113,9 +113,7 @@ class _CurRegistro(_Cur):
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
         if flat.startswith("SELECT id, activity_id"):
-            self._one = {"id": 7, "activity_id": 5, "original_name": "Supino", "mapping_id": 11, "equipment_id": self.gravado}
-        elif flat.startswith("SELECT gym_id FROM activities"):
-            self._one = {"gym_id": GYM}
+            self._one = {"id": 7, "activity_id": 5, "original_name": "Supino", "mapping_id": 11, "equipment_id": self.gravado, "activity_gym_id": GYM}
         elif "FROM exercise_sets" in flat:
             self._all = []
         else:

@@ -85,6 +85,10 @@ from tests.unit.test_access_guarda_cobertura_rotas import (
     ROTA_NOVA_ACADEMIA_FABRICANTE,
     ROTA_NOVA_ALIMENTOS_EXCLUIR,
     ROTA_NOVA_ALIMENTOS_LISTA,
+    ROTAS_NOVAS_PERFIS_RESISTENCIA,
+    ROTA_NOVA_DIAGNOSTICO,
+    ROTA_NOVA_REDUNDANCIA,
+    ROTAS_NOVAS_RECEITAS,
     ROTA_NOVA_REGISTRO_EXERCICIO,
     ROTA_NOVA_TREINO_EQUIP,
     ROTAS_NOVAS_POS_RETRATO,
@@ -855,16 +859,20 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_372_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
+def test_paridade_cobre_as_379_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 372
+    assert len(com_permissao) == 388
+    # + 1 do #288 fatia 3 (ROTA_NOVA_DIAGNOSTICO, so em ROTAS_NOVAS_POS_RETRATO)
+    # + 1 do #288 fatia 2 (ROTA_NOVA_REDUNDANCIA, so em ROTAS_NOVAS_POS_RETRATO)
+    # + 7 do #286 (ROTAS_NOVAS_RECEITAS, so em ROTAS_NOVAS_POS_RETRATO)
+    # + 7 do #288 (ROTAS_NOVAS_PERFIS_RESISTENCIA, so em ROTAS_NOVAS_POS_RETRATO)
     # 55 do 2F-2 originais + 1 do #164 (ROTA_NOVA_TREINO, em CONTRATO_2F2 e em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #188 (ROTA_NOVA_ACADEMIA_FABRICANTE, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #140 (ROTA_NOVA_ALIMENTOS_EXCLUIR, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #195 (ROTA_NOVA_ALIMENTOS_LISTA, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #216 (ROTA_NOVA_REGISTRO_EXERCICIO, so em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 == 372
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 20 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 + 7 + 7 + 1 + 1 == 388
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 36 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29
@@ -1547,7 +1555,9 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
     for rota in sorted(
         set(ROTAS_NOVAS_POS_RETRATO)
         - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA,
-        ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR}
+        ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR, *ROTAS_NOVAS_RECEITAS,
+        *ROTAS_NOVAS_PERFIS_RESISTENCIA, ROTA_NOVA_REDUNDANCIA,
+        ROTA_NOVA_DIAGNOSTICO}
     ):
         declaradas = vivas[rota]
         assert [(d[0], d[1]) for d in declaradas] == [ROTAS_NOVAS_POS_RETRATO[rota]], rota
@@ -1606,6 +1616,42 @@ def test_rota_nova_do_140_tem_a_permissao_excluir_dos_irmaos_e_fica_fora_do_retr
                         ("admin", "master_token")):
         assert decisao_nova("autenticado", declaradas, permissoes_do_papel(papel, tipo), tipo) is True, (papel, tipo)
     assert decisao_nova("autenticado", declaradas, EffectivePermissions(), "session") is False
+
+
+def test_rotas_novas_do_286_tem_a_permissao_do_catalogo_e_decisao_de_usuario_comum():
+    """Receitas: nutricao.alimentos (`ver` nas leituras, `editar` na previa e nas escritas), como o catalogo;
+    usuario, PT, admin e token mestre passam; sem grupo e negado; fora do retrato congelado."""
+    vivas = _declaradas_com_escopo()
+    for rota, (recurso, acao) in ROTAS_NOVAS_RECEITAS.items():
+        assert vivas[rota] == [(recurso, acao, None)], rota
+        assert rota not in carregar_retrato()["rotas"]
+        for papel, tipo in (("regular", "session"), ("personal_trainer", "session"), ("admin", "session"),
+                            ("admin", "master_token")):
+            assert decisao_nova("autenticado", vivas[rota], permissoes_do_papel(papel, tipo), tipo) is True, (rota, papel)
+        assert decisao_nova("autenticado", vivas[rota], EffectivePermissions(), "session") is False, rota
+
+
+def test_rotas_novas_do_288_leitura_do_catalogo_para_todos_e_escrita_so_admin():
+    """Perfis de resistencia: GET `exercicios.catalogo`/`ver` (usuario, PT, admin, token mestre passam), PUT e POST /suggest
+    `admin.catalogos`/`editar` (so admin e token mestre); sem grupo e negado; fora do retrato congelado."""
+    vivas = _declaradas_com_escopo()
+    for rota, (recurso, acao) in ROTAS_NOVAS_PERFIS_RESISTENCIA.items():
+        assert [(d[0], d[1]) for d in vivas[rota]] == [(recurso, acao)], rota
+        assert rota not in carregar_retrato()["rotas"]
+        so_admin = not rota.startswith("GET ")
+        for papel, tipo in (("regular", "session"), ("personal_trainer", "session"), ("admin", "session"),
+                            ("admin", "master_token")):
+            esperado = True if not so_admin or papel == "admin" else False
+            assert decisao_nova("admin" if so_admin else "autenticado", vivas[rota],
+                                permissoes_do_papel(papel, tipo), tipo) is esperado, (rota, papel, tipo)
+        assert decisao_nova("admin", vivas[rota], EffectivePermissions(), "session") is False, rota
+
+
+def test_rota_nova_do_288_diagnostico_usa_a_permissao_de_leitura_do_modelo():
+    vivas = _declaradas_com_escopo()
+    assert [(d[0], d[1]) for d in vivas[ROTA_NOVA_DIAGNOSTICO]] == [("modelos.treino", "ver")]
+    assert ROTA_NOVA_DIAGNOSTICO not in carregar_retrato()["rotas"]
+    assert decisao_nova("admin", vivas[ROTA_NOVA_DIAGNOSTICO], EffectivePermissions(), "session") is False
 
 
 def test_rota_nova_do_216_tem_a_permissao_do_put_irmao_e_decisao_de_usuario_comum():

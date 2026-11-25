@@ -45,6 +45,7 @@ from typing import Any, Optional
 
 # Dono puro dos job types da nutricao (L5a/L5b): a guarda `cota_ia_nutricao`
 # recusa o literal fora dele.
+from .domain import resistance_profile
 from .domain.nutrition import ai_usage
 
 logger = logging.getLogger("musclefit.async_jobs")
@@ -94,6 +95,7 @@ JOB_TYPE_LAMBDA: dict[str, str] = {
     ai_usage.LABEL_PHOTO_JOB_TYPE: "musclefit-plan-generator",  # nutrition_label_photo.py
     ai_usage.MEAL_PHOTO_JOB_TYPE: "musclefit-plan-generator",  # nutrition_meal_photo.py (L10)
     ai_usage.PLAN_SUGGESTION_JOB_TYPE: "musclefit-workout-ai",  # nutrition_plan_suggestion.py (N6, texto: E8)
+    resistance_profile.SUGGEST_JOB_TYPE: "musclefit-workout-ai",  # resistance_profiles.py (#288, lote 42)
 }
 
 # Folga sobre o timeout da Lambda: cold start + atraso de entrega do invoke

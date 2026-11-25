@@ -40,6 +40,7 @@ from . import meal_photo as mp_mod
 from . import phases as phases_mod
 from . import plan as plan_mod
 from . import plan_suggestion as ps_mod
+from . import recipe as recipe_mod
 from . import strategy as strategy_mod
 from . import weekly_budget as wb_mod
 from . import weekly_checkin as wc_mod
@@ -500,6 +501,7 @@ FOOD_SOURCE_LABELS: Final[Mapping[FoodSource, str]] = {
     FoodSource.USER: "Cadastro próprio",
     FoodSource.LABEL_PHOTO: "Foto do rótulo",
     FoodSource.AI_ESTIMATE: "Estimativa da IA",
+    FoodSource.RECIPE: "Receita",
 }
 
 # Origem do alimento na lista (`catalog.food_origin`).
@@ -512,6 +514,7 @@ FOOD_ORIGIN_LABELS: Final[Mapping[catalog_mod.FoodOrigin, str]] = {
     catalog_mod.FoodOrigin.TACO: "TACO",
     catalog_mod.FoodOrigin.TBCA_MANUAL: "TBCA",
     catalog_mod.FoodOrigin.AI: "IA",
+    catalog_mod.FoodOrigin.RECIPE: "Receita",
 }
 
 # Tipos de dado do USDA FoodData Central importados (L3b; códigos do FDC em `external_sources`).
@@ -693,6 +696,24 @@ def _decimal(value: float) -> str:
 
 # Código de limitação/clamp/erro -> texto exibido. Número no texto vem do dono.
 LIMITATION_LABELS: Final[Mapping[str, str]] = {
+    # Receita (L37): erros e limitações do motor; os três `recipe_ingredient_*` são da rota (`nutrition_recipes`).
+    recipe_mod.ERR_NO_INGREDIENTS: "A receita precisa de ao menos um ingrediente.",
+    recipe_mod.ERR_TOO_MANY_INGREDIENTS: "Ingredientes demais na receita.",
+    recipe_mod.ERR_INVALID_FINAL_WEIGHT: "Peso final da receita inválido.",
+    recipe_mod.ERR_YIELD_IMPLAUSIBLE: "Rendimento implausível: confira o peso final e os ingredientes.",
+    recipe_mod.LIMIT_RAW_WEIGHT_EXCLUDES_ML: "Há ingrediente em ml: o rendimento (peso cru) não foi calculado.",
+    recipe_mod.ERR_OVERRIDE_FIELD: "Há nutriente que não pode ser editado na receita.",
+    recipe_mod.ERR_INGREDIENT_NOT_FOUND: "Ingrediente não encontrado.",
+    recipe_mod.ERR_INGREDIENT_IS_RECIPE: "Receita não pode ser ingrediente de outra receita.",
+    recipe_mod.ERR_INGREDIENT_PORTION_NOT_FOUND: "Porção não encontrada para o ingrediente.",
+    recipe_mod.ERR_PUBLISH_ARCHIVED: "Receita arquivada não pode ser publicada.",
+    "food_is_recipe": "Receita se edita pela tela de receita.",
+    recipe_mod.ERR_PUBLISH_NAME_REQUIRED: "A receita precisa de nome para ser publicada.",
+    recipe_mod.ERR_PUBLISH_FINAL_WEIGHT_REQUIRED: "A receita precisa do peso final para ser publicada.",
+    recipe_mod.ERR_PUBLISH_NO_INGREDIENTS: "A receita precisa de ao menos um ingrediente para ser publicada.",
+    recipe_mod.ERR_PUBLISH_INVALID_VALUES: "Os valores por 100 g da receita estão fora das regras do catálogo.",
+    recipe_mod.ERR_PUBLIC_EDIT_FORBIDDEN: "Receita pública só é editada por quem administra o catálogo.",
+    recipe_mod.ERR_VERSION_CONFLICT: "Outra edição da receita foi salva ao mesmo tempo. Tente de novo.",
     # Dado do sujeito (o 422 do preview lista estes).
     bmr_mod.LIMIT_MISSING_SEX: "Sexo não informado no perfil.",
     bmr_mod.LIMIT_SEX_OTHER_REQUIRES_FFM: "Sexo \"Outro\" exige a massa livre de gordura (bioimpedância) para a TMB.",
@@ -738,6 +759,11 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "A compensação com gordura não fecha neste plano: a gordura do dia alto ficaria abaixo do mínimo ou a do "
         "dia baixo acima do máximo. Reduza a oscilação do ciclo ou ajuste a gordura base."
     ),
+    cc_mod.LIMIT_FAT_COMPENSATION_CARB_LIMITED: (
+        "A compensação com gordura limitou a oscilação do carboidrato neste dia para a gordura ficar dentro da faixa "
+        "recomendada da estratégia. A energia e a proteína do dia não mudam."
+    ),
+    cc_mod.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED: "gordura base fora da faixa da estratégia: ciclo não aplicado neste dia",
     cc_mod.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED: (
         "A meta base não fecha em calorias, proteína, carboidrato e gordura; a compensação com gordura não pode ser aplicada."
     ),
@@ -1093,7 +1119,55 @@ NOTICE_LABELS: Final[Mapping[str, str]] = {
 }
 
 # Códigos com campo (`<prefixo>:<campo>`): o texto recebe o rótulo do campo.
+_CYCLE_DAY_WORDS: Final[Mapping[str, str]] = {
+    DayKind.HIGH.value: "alto",
+    DayKind.NORMAL.value: "normal",
+    DayKind.LOW.value: "baixo",
+}
+
+# Gordura de um dia do ciclo com compensação (`plan.check_cycle_floors`): `{day}` = alto/normal/baixo, `{percent}` = % das kcal.
+CYCLE_FAT_LABELS: Final[Mapping[str, str]] = {
+    plan_mod.ERR_CYCLE_FAT_BELOW_MIN: (
+        "Ciclo de carboidrato: no dia {day} a gordura ficaria em {percent}% das kcal "
+        f"(mínimo seguro {_percent(manual_mod.FAT_BLOCK_MIN_KCAL_SHARE)}). Não pode ser salvo."
+    ),
+    plan_mod.ERR_CYCLE_FAT_ABOVE_MAX: (
+        "Ciclo de carboidrato: no dia {day} a gordura ficaria em {percent}% das kcal "
+        f"(máximo aceito {_percent(manual_mod.FAT_BLOCK_MAX_KCAL_SHARE)}). Não pode ser salvo."
+    ),
+    plan_mod.WARN_CYCLE_FAT_BELOW_RANGE: (
+        "Ciclo de carboidrato: no dia {day} a gordura fica em {percent}% das kcal, abaixo da faixa recomendada. "
+        "Salva, mas confira."
+    ),
+    plan_mod.WARN_CYCLE_FAT_ABOVE_RANGE: (
+        "Ciclo de carboidrato: no dia {day} a gordura fica em {percent}% das kcal, acima da faixa recomendada. "
+        "Salva, mas confira."
+    ),
+}
+
 PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
+    recipe_mod.ERR_INVALID_INGREDIENT_AMOUNT: "Ingrediente {field}: quantidade inválida.",
+    recipe_mod.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE: (
+        f"Ingrediente {{field}}: quantidade acima de {recipe_mod.RECIPE_INGREDIENT_AMOUNT_MAX:g} g ou ml."
+    ),
+    recipe_mod.ERR_OVERRIDE_VALUE: "{field}: valor inválido.",
+    recipe_mod.LIMIT_INCOMPLETE: "{field}: nutriente ausente em algum ingrediente; o total é parcial.",
+    recipe_mod.ERR_INGREDIENT_NOT_FOUND: "Ingrediente {field}: não encontrado.",
+    recipe_mod.ERR_INGREDIENT_IS_RECIPE: "Ingrediente {field}: receita não pode ser ingrediente.",
+    recipe_mod.ERR_INGREDIENT_PORTION_NOT_FOUND: "Ingrediente {field}: porção não encontrada.",
+    # Limitação de UM ingrediente da receita (`<código>:<índice>`, `recipe.calculate_recipe`).
+    meal_math_mod.LIMIT_ASSUMED_DENSITY: (
+        f"Ingrediente {{field}}: sem densidade, g e ml convertidos a {meal_math_mod.DEFAULT_DENSITY_G_PER_ML:g} g por ml (água)."
+    ),
+    # Erros de quantidade do ingrediente (`diary.item_amount_errors` + `:<índice>`); sem sufixo, saem no diário.
+    **{
+        codigo: "Ingrediente {field}: " + LIMITATION_LABELS[codigo][0].lower() + LIMITATION_LABELS[codigo][1:]
+        for codigo in (
+            meal_math_mod.LIMIT_MISSING_QUANTITY,
+            diary_mod.ERR_UNIT_WITHOUT_CONVERSION,
+            diary_mod.ERR_ITEM_AMOUNT_OUT_OF_RANGE,
+        )
+    },
     strategy_mod.LIMIT_PARAM_OUT_OF_RANGE: "{field}: fora da faixa da fonte.",
     plan_mod.ERR_INVALID_CODE: "{field}: código inválido.",
     # Gramas manuais (N1, D6): `<código>:<campo>`.
@@ -1222,9 +1296,17 @@ def limitation_label(code: str) -> str:
     if code in LIMITATION_LABELS:
         return LIMITATION_LABELS[code]
     prefixo, _, campo = code.partition(":")
+    if prefixo in CYCLE_FAT_LABELS:  # `<código>:<tipo do dia>:<percentual>`
+        tipo, _, percentual = campo.partition(":")
+        if tipo in _CYCLE_DAY_WORDS and percentual.isdigit():
+            return CYCLE_FAT_LABELS[prefixo].format(day=_CYCLE_DAY_WORDS[tipo], percent=percentual)
+        return code
     modelo = PREFIXED_LIMITATION_LABELS.get(prefixo)
     if modelo is None or not campo:
         return code
+    # Índice do ingrediente é número puro: `_FIELD_LABELS` mapeia "2" para dia da semana.
+    if modelo.startswith("Ingrediente {field}") and campo.isdigit():
+        return modelo.format(field=int(campo) + 1)  # índice 0-based no código, posição 1-based no texto
     return modelo.format(field=_FIELD_LABELS.get(campo, campo))
 
 

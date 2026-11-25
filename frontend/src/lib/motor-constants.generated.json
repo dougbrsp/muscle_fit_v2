@@ -799,7 +799,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v6",
+    "engine_version": "nutrition-v7",
     "sexes": [
       "male",
       "female",
@@ -936,6 +936,8 @@
       "fat_compensation": "Menos carboidrato deixa espaço para mais gordura, mantendo a energia já calculada para o dia. O percentual de gordura ou os macros manuais passam a definir a base, não a gordura final de cada dia."
     },
     "default_carb_cycle_policy": "vary_kcal",
+    "fat_compensation_carb_limited": "fat_compensation_carb_limited",
+    "fat_compensation_cycle_skipped": "fat_compensation_cycle_skipped",
     "day_kinds": [
       "high",
       "normal",
@@ -1454,7 +1456,8 @@
       "tbca_manual",
       "user",
       "label_photo",
-      "ai_estimate"
+      "ai_estimate",
+      "recipe"
     ],
     "food_source_labels": {
       "taco": "TACO 4ª ed.",
@@ -1463,7 +1466,8 @@
       "tbca_manual": "TBCA (digitado)",
       "user": "Cadastro próprio",
       "label_photo": "Foto do rótulo",
-      "ai_estimate": "Estimativa da IA"
+      "ai_estimate": "Estimativa da IA",
+      "recipe": "Receita"
     },
     "food_bases": [
       "g",

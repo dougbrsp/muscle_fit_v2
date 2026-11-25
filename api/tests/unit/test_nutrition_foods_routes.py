@@ -9,11 +9,14 @@ Banco em memória: `tests/support/nutrition_foods_fake.py`."""
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import nutrition_foods as foods_mod
+from app import nutrition_recipes
 from app.domain.nutrition import catalog, food_text
 from app.nutrition_schema import food_tables_missing_error
 from app.security import Identity, get_current_identity
@@ -75,6 +78,7 @@ def db(monkeypatch):
     monkeypatch.setattr(foods_mod, "get_conn", banco.conn)
     monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
     monkeypatch.setattr(foods_mod, "has_favorites_table", lambda cur: True)
+    monkeypatch.setattr(nutrition_recipes, "require_recipe_tables", lambda cur: None)
     return banco
 
 
@@ -440,3 +444,130 @@ def test_segunda_exclusao_e_inexistente_sao_404(db):
     assert segunda.status_code == 404 and segunda.json()["detail"]["error"] == "food_not_found"
     assert aluno.delete("/nutrition/foods/999").status_code == 404
     assert aluno.delete("/nutrition/foods/7").status_code == 404  # já inativo desde o cenário
+
+
+# ---------------------------------------------------------------------------
+# Receita no catálogo (L37, #286)
+# ---------------------------------------------------------------------------
+
+
+def _receita(db) -> int:
+    rid = db.add_food("Receita de arroz", source="recipe", owner=ALUNO, energy_kcal=150, carbohydrates_g=30,
+                      protein_g=3, total_fat_g=1)
+    db.favorites.append({"user_id": ALUNO, "food_id": rid})
+    return rid
+
+
+def test_put_de_receita_e_409_food_is_recipe_e_nao_grava(db):
+    rid = _receita(db)
+    resposta = _client().put(f"/nutrition/foods/{rid}", json={**ARROZ, "name": "Outro nome"})
+    assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == "food_is_recipe"
+    assert db.foods[rid]["name"] == "Receita de arroz"
+
+
+def _versao(db, rid, peso=250, ingredientes=1):
+    """Versão atual gravada da receita (o que a rota de receitas grava), para a promoção ler."""
+    vid = db.next_version_id
+    db.next_version_id += 1
+    db.recipe_versions[vid] = {"id": vid, "food_id": rid, "version": 1, "final_weight_g": peso}
+    for i in range(ingredientes):
+        iid = db.next_ingredient_id
+        db.next_ingredient_id += 1
+        db.recipe_ingredients[iid] = {"id": iid, "version_id": vid, "position": i}
+
+
+def test_receita_promovida_pelo_admin_fica_publica_com_as_porcoes(db):
+    rid = _receita(db)
+    _versao(db, rid)
+    porcao = db.add_portion(rid, "fatia", 80, owner=ALUNO)
+    assert _client().get(f"/nutrition/foods/{rid}").json()["permissions"]["can_promote"] is False  # sem admin.catalogos
+    assert _client().post(f"/nutrition/foods/{rid}/promote").status_code == 403
+    resposta = _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote")
+    assert resposta.status_code == 200, resposta.text
+    assert db.foods[rid]["owner_user_id"] is None and db.portions[porcao]["owner_user_id"] is None
+    assert resposta.json()["is_public"] is True
+    assert _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote").status_code == 409  # já pública
+
+
+@pytest.mark.parametrize("quebra,codigo", [
+    ({"name": "   "}, "recipe_publish_name_required"),
+    ({"energy_kcal": None}, "recipe_publish_invalid_values"),
+    ({"protein_g": 500}, "recipe_publish_invalid_values"),
+])
+def test_promocao_de_receita_sem_requisito_e_422_tipado_e_nao_publica(db, quebra, codigo):
+    rid = _receita(db)
+    _versao(db, rid)
+    db.foods[rid].update({k: (None if v is None else Decimal(str(v)) if not isinstance(v, str) else v) for k, v in quebra.items()})
+    r = _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote")
+    detalhe = r.json()["detail"]
+    assert r.status_code == 422 and detalhe["code"] == detalhe["error"] == codigo and "_" not in detalhe["message"]
+    assert detalhe["errors"][0]["code"] == codigo
+    assert db.foods[rid]["owner_user_id"] == ALUNO
+
+
+def test_promocao_de_receita_sem_peso_final_ou_sem_ingrediente_e_422(db):
+    sem_versao, sem_ingrediente = _receita(db), _receita(db)
+    _versao(db, sem_ingrediente, ingredientes=0)
+    admin = _client("admin", ADMIN)
+    r1 = admin.post(f"/nutrition/foods/{sem_versao}/promote").json()["detail"]
+    assert {i["code"] for i in r1["errors"]} == {"recipe_publish_final_weight_required", "recipe_publish_no_ingredients"}
+    r2 = admin.post(f"/nutrition/foods/{sem_ingrediente}/promote").json()["detail"]
+    assert r2["code"] == "recipe_publish_no_ingredients"
+    assert db.foods[sem_versao]["owner_user_id"] == db.foods[sem_ingrediente]["owner_user_id"] == ALUNO
+
+
+def test_receita_arquivada_nao_publica_pela_rota_nem_pelo_motor(db):
+    rid = _receita(db)
+    _versao(db, rid)
+    db.foods[rid]["is_active"] = 0
+    r = _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote")  # a rota não enxerga a inativa
+    assert r.status_code == 404 and db.foods[rid]["owner_user_id"] == ALUNO
+    with db.conn() as conn, conn.cursor() as cur:  # e o bloqueio do motor vale se a linha chegar inativa
+        codigos, _ = nutrition_recipes.promotion_blockers(cur, db.foods[rid])
+    assert "recipe_publish_archived" in codigos
+
+
+def test_promocao_sem_tabelas_de_receita_e_503(db, monkeypatch):
+    rid = _receita(db)
+    _versao(db, rid)
+    monkeypatch.undo()  # volta o require_recipe_tables real
+    monkeypatch.setattr(foods_mod, "get_conn", db.conn)
+    monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
+    monkeypatch.setattr(nutrition_recipes, "require_recipe_tables",
+                        lambda cur: (_ for _ in ()).throw(foods_mod.HTTPException(status_code=503, detail="sem 125")))
+    assert _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote").status_code == 503
+    assert db.foods[rid]["owner_user_id"] == ALUNO
+
+
+def test_admin_ve_receita_privada_alheia_so_com_nome_e_valores_sem_ingredientes(db):
+    rid = _receita(db)
+    _versao(db, rid)
+    corpo = _client("admin", ADMIN).get(f"/nutrition/foods/{rid}")
+    assert corpo.status_code == 200
+    j = corpo.json()
+    assert j["name"] == "Receita de arroz" and j["per_100"]["energy_kcal"] is not None
+    assert not {"ingredients", "method", "preparation", "instructions", "versions", "recipe"} & set(j)
+    assert _client("admin", ADMIN).get(f"/nutrition/recipes/{rid}").status_code in (404, 405)  # sem a rota de receitas montada
+
+
+def test_excluir_receita_arquiva_e_sai_dos_favoritos_e_porcao_vale(db):
+    rid = _receita(db)
+    aluno = _client()
+    assert aluno.post(f"/nutrition/foods/{rid}/portions", json={"label": "fatia", "amount": 80}).status_code == 201
+    assert aluno.delete(f"/nutrition/foods/{rid}").status_code == 200
+    assert db.foods[rid]["is_active"] == 0
+    assert not [f for f in db.favorites if f["food_id"] == rid]
+    assert aluno.get(f"/nutrition/foods/{rid}").status_code == 404
+
+
+def test_busca_e_lista_devolvem_receita_e_exclude_recipes_a_tira(db):
+    _receita(db)
+    aluno = _client()
+    com = _busca(aluno, "arroz")["items"]
+    assert any(i["source"] == "recipe" and i["origin"]["label"] == "Receita" for i in com)
+    sem = _busca(aluno, "arroz", exclude_recipes="true")["items"]
+    assert sem and not any(i["source"] == "recipe" for i in sem)
+    lista = aluno.get("/nutrition/foods", params={"letter": "r"}).json()["items"]
+    assert [i["source"] for i in lista] == ["recipe"]
+    lista = aluno.get("/nutrition/foods", params={"letter": "r", "exclude_recipes": "true"}).json()["items"]
+    assert lista == []

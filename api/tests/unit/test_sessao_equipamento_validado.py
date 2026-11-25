@@ -80,7 +80,7 @@ def test_equipamento_de_outra_academia_422(db):
 def test_equipamento_inexistente_422(db):
     with pytest.raises(HTTPException) as exc:
         _add_exercise(equipment_id=555)
-    assert _codigo(exc) == (422, "equipment_not_found")
+    assert _codigo(exc) == (422, "equipment_not_in_session_gym")
 
 
 def test_par_incoerente_422(db):
@@ -102,7 +102,7 @@ def test_sessao_sem_academia_equipamento_inexistente_422(db):
     db.sessions[base.SESSION]["gym_id"] = None
     with pytest.raises(HTTPException) as exc:
         _add_exercise(equipment_id=555)
-    assert _codigo(exc) == (422, "equipment_not_found")
+    assert _codigo(exc) == (422, "equipment_not_in_session_gym")
 
 
 def test_sessao_sem_academia_par_incoerente_422(db):

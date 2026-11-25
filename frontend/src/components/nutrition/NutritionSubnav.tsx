@@ -8,6 +8,7 @@ const SECOES = [
   { href: '/nutricao/plano', label: 'Plano' },
   { href: '/nutricao/checkin', label: 'Check-in' },
   { href: '/nutricao/alimentos', label: 'Alimentos' },
+  { href: '/nutricao/receitas', label: 'Receitas' },
   { href: '/nutricao/favoritos', label: 'Preferidos' },
   { href: '/dashboard/nutricao', label: 'Painel' },
 ] as const;
@@ -21,7 +22,8 @@ type Props = { active: (typeof SECOES)[number]['href'] };
  */
 export function NutritionSubnav({ active }: Props) {
   return (
-    <Group gap="xs" wrap="wrap" aria-label="Seções da Nutrição" role="navigation">
+    // wrap + botões que não encolhem: em tela estreita quebra de linha sem cortar o rótulo.
+    <Group gap="xs" wrap="wrap" aria-label="Seções da Nutrição" role="navigation" style={{ rowGap: 8 }}>
       {SECOES.map((secao) => (
         <Button
           key={secao.href}
@@ -29,6 +31,7 @@ export function NutritionSubnav({ active }: Props) {
           href={secao.href}
           size="xs"
           radius="xl"
+          style={{ flexShrink: 0 }}
           color="brand"
           variant={secao.href === active ? 'filled' : 'light'}
           aria-current={secao.href === active ? 'page' : undefined}

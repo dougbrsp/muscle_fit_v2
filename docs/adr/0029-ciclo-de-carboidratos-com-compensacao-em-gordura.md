@@ -52,6 +52,35 @@ Restrições reais:
 
 8. **Frontend.** `frontend/src/lib/nutrition-cycle-policy.ts` só transporta e exibe: seletor no editor junto do ciclo (só com ciclo), resumo do plano, tabela da semana e diário, web e mobile. Nenhum cálculo e nenhum rótulo de política escritos à mão.
 
+## Decisão de 25/11/2026: gordura do dia dentro da faixa da estratégia
+
+Contexto. Simulação de 8.100 combinações do rascunho (25/11/2026) mostrou que, na política `fat_compensation`, a gordura do dia alto chegava a 0,2% das kcal e a do dia baixo a 46%. Por isso 608 de 1.800 combinações eram bloqueadas ao salvar, com "Gordura (g): abaixo do mínimo seguro". Sem ciclo e com `vary_kcal` não havia anomalia, e o Atwater fechava em todas.
+
+Alternativas consideradas:
+- manter só o bloqueio (o plano não salva quando a gordura do dia cai abaixo do piso): recusada, porque bloqueia combinações válidas do ciclo;
+- piso mais limitação do carbo: escolhida pelo usuário em 25/11/2026 ("piso + limitar o carbo").
+
+Decisão:
+- `carb_cycling._day_with_fat_compensation` recebe `fat_share_range`, vindo de `strategy.fat_share_range_for` e repassado por `daily_target`;
+- `_clamp_delta_to_fat_range` limita o módulo do delta de carbo até a gordura do dia ficar dentro da faixa da estratégia (cutting 15–30% das kcal; manutenção e bulking 20–35%). Energia e proteína são mantidas;
+- o dia limitado sai com o aviso `fat_compensation_carb_limited`;
+- alvo pré-ciclo fora da faixa: delta zero e o mesmo aviso;
+- `plan.check_cycle_floors` usa os códigos próprios `cycle_fat_share_below_minimum`, `cycle_fat_share_above_maximum`, `cycle_fat_share_below_range` e `cycle_fat_share_above_range`, no formato `<código>:<dia>:<percentual>`, com rótulos que citam o dia e a fração (`labels.py`);
+- a prévia do plano traz `macro_kcal_shares` por dia, calculado por `manual_targets.macro_kcal_shares` (fração das kcal pelo Atwater das próprias gramas; a tela só exibe).
+
+Trade-offs:
+- Ganha: menos combinações bloqueadas; o plano continua dentro da faixa da estratégia sem bloquear o usuário.
+- Paga: o carbo do dia pode ficar menor que o pedido pelo ciclo, e a soma semanal de gramas de carbo e gordura já não é conservada (ver o limite (d) abaixo, em "Limites e pendências"). O aviso avisa quando isso acontece.
+
+Consequências:
+- Sem migração e sem mudança de formato de `carb_cycling_json`.
+- Códigos novos em `carb_cycling.py`: `LIMIT_FAT_COMPENSATION_CARB_LIMITED` (`fat_compensation_carb_limited`) e `LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED` (`fat_compensation_cycle_skipped`: gordura base já fora da faixa; o ciclo do dia não é aplicado e `daily_target` o trata como ciclo não aplicado). Rótulos em `labels.py`; exportados no bloco `nutrition` de `frontend/src/lib/motor-constants.generated.json`.
+- Clamp sem troca de sinal: o delta de carbo só perde módulo (`CARB_LIMIT_SIGNIFICANT_G` = 1e-6 g). A faixa vem de `strategy.fat_share_range_for`; a tolerância de borda é `manual_targets.RANGE_EDGE_TOLERANCE`.
+- Percentual dos códigos `cycle_fat_share_*`: piso ("abaixo") e teto ("acima"). Com a faixa, esses erros só sobram quando a gordura base já é bloqueada (barrada antes da montagem).
+- `daily_target.ENGINE_VERSION` sobe para `nutrition-v7`. A ressalva "não muda nesta entrega" da decisão 5 vale para o lote 12; o lote 53 muda a versão.
+- Tela: no modo manual, oculta proteína (g/kg) e gordura (%), mas mantém os valores gravados e os envia de volta. Números da prévia do rascunho salvo ficam ocultos com edição não salva. Aviso do ciclo só por dia.
+- Impacto em produção (informado pelo usuário em 25/11/2026): 1 plano vigente, na política `vary_kcal` ("variar as calorias"); 0 planos com compensação pela gordura. `nutrition-v7` regrava as metas não congeladas de hoje em diante (no plano vigente, com os mesmos valores, pois `vary_kcal` não muda); dias passados e congelados não mudam; os hashes-ouro de `api/tests/unit/test_nutrition_modos_legados_ouro.py` são regravados, com nota. Planos com ciclo e compensação podem passar a ter dias com o ciclo não aplicado (hoje, nenhum).
+
 ## Trade-offs
 
 - Ganha: o modo novo sem migração, sem mudança de formato para quem não o usa e sem perda de dados.
@@ -71,7 +100,7 @@ Restrições reais:
 ## Limites e pendências
 
 - (a) **Rollback** (ver Trade-offs): código anterior lê `policy` como dia inválido e o plano perde o ciclo sem aviso.
-- (b) **Valor desconhecido já gravado** na chave `policy`: `_enum_or_error` devolve o padrão e registra erro, e `settings_from_row` ignora erros de validação na leitura. O plano é lido no padrão e mantém os dias. Não há aviso na tela.
+- (b) **Valor desconhecido já gravado** na chave `policy`: `_enum_or_error` devolve o padrão e registra erro, e `settings_from_row` ignora erros de validação na leitura. O plano é lido no padrão e mantém os dias. Não há aviso na tela. Nota: desde o lote 33 a chave `policy` não é mais lida; valor desconhecido na COLUNA é lido como a política padrão, com aviso em log uma vez por plano (ver ADR 0033).
 - (c) **Dia real inviável** sai sem ciclo com a limitação. O bloqueio ao salvar avalia os tipos de dia num dia sem treino, então um dia com treino pode sair sem ciclo sem que o bloqueio o tenha visto.
 - (d) A soma semanal de kcal é conservada, mas a soma semanal de gramas de carbo e de gordura não é conservada.
 - (e) O SQL do alias `carb_cycle_policy_json` foi exercitado só com banco simulado antes do CI (`ci-completo`).

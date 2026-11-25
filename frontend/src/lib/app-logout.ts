@@ -1,6 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { apiFetch, beginLogout, endLogout } from '@/lib/api';
+import { clearRecipeDrafts } from '@/lib/recipe-draft-storage';
 import { clearSession, confirmLogoutWithUnsyncedOps } from '@/lib/auth';
+
+export { clearRecipeDrafts };
 
 /**
  * Ponto UNICO de logout da UI (shell desktop e shell mobile). Com series ainda
@@ -21,6 +24,7 @@ export async function logoutAndRedirect(
     // mesmo se a chamada falhar (token ja expirado, rede etc.), a sessao
     // local e limpa e o usuario e redirecionado de qualquer forma.
   } finally {
+    clearRecipeDrafts();
     clearSession();
     // Sem clear() aqui: com as telas ainda montadas, os observers de
     // ['current-user'] recriariam a query e disparariam GET /auth/me sem cookie;

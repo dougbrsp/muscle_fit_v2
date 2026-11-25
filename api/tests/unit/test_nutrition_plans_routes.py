@@ -250,6 +250,12 @@ def test_preview_calcula_a_semana_sem_gravar(admin, db):
     assert "training_unknown_future_day" in [i["code"] for i in domingo["limitations"]]
     # Antes da primeira pesagem (12/10 e 13/10) a meta não é calculável: None, nunca 0.
     assert corpo["week"][0]["kcal"] is None
+    assert corpo["week"][0]["macro_kcal_shares"] is None
+    # Fração das kcal de cada macro pelo motor (aditivo), no dia da semana e no alvo de hoje.
+    hoje = next(d for d in corpo["week"] if d["local_date"] == HOJE.isoformat())
+    for dia in (hoje, corpo["target"]):
+        assert sum(dia["macro_kcal_shares"].values()) == pytest.approx(1.0)
+        assert dia["macro_kcal_shares"]["fat"] == pytest.approx(dia["fat_g"] * 9 / dia["kcal"])
 
 
 def test_preview_sem_dados_responde_422_com_o_que_falta(admin, db):

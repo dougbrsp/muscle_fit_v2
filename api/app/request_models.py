@@ -18,11 +18,17 @@ import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StringConstraints, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
+from .domain.resistance_profile import SUGGEST_MAX_PAIRS_PER_REQUEST
 from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
+from .domain.nutrition.catalog import PER_100_FIELDS as _PER_100_FIELDS
+from .domain.nutrition.recipe import RECIPE_FINAL_WEIGHT_MAX_G as _RECIPE_FINAL_WEIGHT_MAX_G
+from .domain.nutrition.recipe import RECIPE_INGREDIENT_AMOUNT_MAX as _RECIPE_INGREDIENT_AMOUNT_MAX
+from .domain.nutrition.recipe import RECIPE_NAME_MAX_CHARS as _RECIPE_NAME_MAX_CHARS
+from .domain.nutrition.recipe import RECIPE_MAX_INGREDIENTS as _RECIPE_MAX_INGREDIENTS
 
 NOTES_MAX = 2000
 SHORT_TEXT_MAX = 160
@@ -333,6 +339,43 @@ class FoodPortionIn(_StrictIn):
     amount: Number
 
 
+# Só nos modelos de receita: bool e string numérica viram 422 (o `Number` global segue lenient).
+_RecipeNumber = Union[StrictInt, StrictFloat]
+
+
+class RecipeIngredientIn(_StrictIn):
+    """Ingrediente de uma receita (issue #286): alimento do catálogo, quantidade e unidade (códigos de
+    `meal_math.Unit`) e porção opcional. Conversão e visibilidade NÃO são validadas aqui: `meal_math` e
+    `nutrition_access` (a rota responde 422 com o código e o índice)."""
+
+    food_id: StrictInt
+    quantity: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_INGREDIENT_AMOUNT_MAX)
+    unit: str = Field(min_length=1, max_length=24)
+    portion_id: Optional[StrictInt] = None
+
+
+class RecipePreviewIn(_StrictIn):
+    """POST /nutrition/recipes/preview e base do POST/PUT: ingredientes, peso final pronto, substituições
+    manuais por campo (valor por 100 g) e porção padrão (g). Cálculo e limites finos: `domain/nutrition/recipe`."""
+
+    name: Optional[str] = Field(default=None, max_length=_RECIPE_NAME_MAX_CHARS)
+    ingredients: List[RecipeIngredientIn] = Field(max_length=_RECIPE_MAX_INGREDIENTS)
+    final_weight_g: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
+    overrides: Optional[dict[Annotated[str, StringConstraints(max_length=64)], Optional[Annotated[_RecipeNumber, Field(allow_inf_nan=False)]]]] = Field(
+        default=None, max_length=len(_PER_100_FIELDS))
+    serving_size: Optional[_RecipeNumber] = Field(default=None, gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
+
+
+class RecipeSaveIn(RecipePreviewIn):
+    """POST e PUT /nutrition/recipes: o nome é obrigatório; `instructions` é privado do dono."""
+
+    name: str = Field(min_length=1, max_length=_RECIPE_NAME_MAX_CHARS)
+    instructions: Optional[str] = Field(default=None, max_length=20000)
+    # PUT: true = todos os ingredientes resolvem do catálogo atual; false = os iguais aos da versão atual
+    # reaproveitam o snapshot gravado. Ignorado no POST.
+    refresh_ingredients: bool = False
+
+
 class FavoriteDefaultIn(_StrictIn):
     """Porção padrão de um alimento preferido (nutrição N3): quantidade e unidade
     (código de `meal_math.Unit`) juntas, ou nenhuma. `default_portion_id` escolhe
@@ -498,6 +541,57 @@ class ActivityCorrectionIn(_StrictIn):
         return self
 
 
+class ResistanceProfileIn(_StrictIn):
+    """PUT /resistance-profiles/{id} (admin). Codigos e regras sao validados pelo dono `domain/resistance_profile.py`;
+    aqui so formato e tamanho. Substituicao completa: componentes ausentes viram `unknown`; `status` obrigatorio."""
+
+    source: Optional[str] = Field(default=None, max_length=32)
+    mechanism: Optional[str] = Field(default=None, max_length=32)
+    trajectory: Optional[str] = Field(default=None, max_length=32)
+    profile: Optional[str] = Field(default=None, max_length=32)
+    line: Optional[str] = Field(default=None, max_length=32)
+    direction_changes: Optional[str] = Field(default=None, max_length=32)
+    flags: Optional[List[Annotated[str, Field(max_length=32)]]] = Field(default=None, max_length=16)
+    confidence: Optional[str] = Field(default=None, max_length=16)
+    status: str = Field(max_length=16)
+    rationale: Optional[str] = Field(default=None, max_length=2000)
+    evidence: Optional[str] = Field(default=None, max_length=4000)
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
+REDUNDANCY_PREVIEW_MAX_ITEMS = 30
+
+
+class RedundancyPreviewItemIn(_StrictIn):
+    mapping_id: StrictInt = Field(ge=1)
+    equipment_id: Optional[StrictInt] = Field(default=None, ge=1)
+
+
+class RedundancyPreviewIn(_StrictIn):
+    """POST /workout-plan-templates/redundancy-preview. `target_index` (item novo/trocado) compara só o alvo com os
+    demais; sem ele, todos os pares. `min_level` omite pares abaixo do nível (ordem do dono `exercise_redundancy`)."""
+
+    items: List[RedundancyPreviewItemIn] = Field(min_length=1, max_length=REDUNDANCY_PREVIEW_MAX_ITEMS)
+    target_index: Optional[StrictInt] = Field(default=None, ge=0)
+    min_level: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+
+    @model_validator(mode="after")
+    def _target_in_range(self):
+        if self.target_index is not None and self.target_index >= len(self.items):
+            raise ValueError("target_index fora de items")
+        return self
+
+
+class ResistanceSuggestIn(_StrictIn):
+    """POST /resistance-profiles/suggest (admin). `equipment_exercise_ids` vence `limit`; sem ids, o job escolhe pares
+    pendentes. Teto de pares por clique: `SUGGEST_MAX_PAIRS_PER_REQUEST` do dono (a rota divide em jobs)."""
+
+    limit: StrictInt = Field(default=SUGGEST_MAX_PAIRS_PER_REQUEST, ge=1, le=SUGGEST_MAX_PAIRS_PER_REQUEST)
+    equipment_exercise_ids: Optional[List[Annotated[StrictInt, Field(ge=1)]]] = Field(
+        default=None, min_length=1, max_length=SUGGEST_MAX_PAIRS_PER_REQUEST
+    )
+
+
 __all__ = [
     "ActivityCorrectionIn",
     "BodyCompositionUpdateIn",
@@ -518,6 +612,8 @@ __all__ = [
     "NutritionPlanSettingsIn",
     "PlanSuggestionCurrentIn",
     "PlanSuggestionIn",
+    "ResistanceProfileIn",
+    "ResistanceSuggestIn",
     "NutritionTargetsRecomputeIn",
     "SleepMetricsUpdateIn",
     "UserCreateIn",

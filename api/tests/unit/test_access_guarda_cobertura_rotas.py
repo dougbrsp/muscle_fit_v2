@@ -84,7 +84,35 @@ ROTA_NOVA_ACADEMIA_FABRICANTE = "PATCH /gym-equipment-catalog/{link_id}"  # #188
 ROTA_NOVA_ALIMENTOS_LISTA = "GET /nutrition/foods"  # #195: listagem por letra
 ROTA_NOVA_REGISTRO_EXERCICIO = "POST /exercises/logs"  # #216: exercicio novo em treino encerrado
 ROTA_NOVA_ALIMENTOS_EXCLUIR = "DELETE /nutrition/foods/{food_id}"  # #140: exclusao logica; fora do retrato congelado
+# #286: receitas (`app.nutrition_recipes`), mesma permissao do catalogo de alimentos: `editar` na previa e nas
+# escritas, `ver` nas leituras.
+ROTAS_NOVAS_RECEITAS: dict[str, tuple[str, str]] = {
+    "POST /nutrition/recipes/preview": ("nutricao.alimentos", "editar"),
+    "POST /nutrition/recipes": ("nutricao.alimentos", "editar"),
+    "PUT /nutrition/recipes/{food_id}": ("nutricao.alimentos", "editar"),
+    "GET /nutrition/recipes": ("nutricao.alimentos", "ver"),
+    "GET /nutrition/recipes/{food_id}": ("nutricao.alimentos", "ver"),
+    "GET /nutrition/recipes/{food_id}/versions": ("nutricao.alimentos", "ver"),
+    "POST /nutrition/recipes/{food_id}/duplicate": ("nutricao.alimentos", "editar"),
+}
 
+
+# #288 fatia 2: previa de redundancia no editor de Modelo, mesma permissao das rotas de edicao do editor.
+ROTA_NOVA_REDUNDANCIA = "POST /workout-plan-templates/redundancy-preview"
+# #288 fatia 3: diagnostico de Modelo, mesma permissao da leitura do Modelo (`template_guard("ver")`).
+ROTA_NOVA_DIAGNOSTICO = "GET /workout-plan-templates/{template_id}/redundancy-diagnostic"
+
+# #288: perfis de resistencia (`app.resistance_profiles`), mesmas permissoes de `equipment_exercises.py`:
+# leitura `exercicios.catalogo`/`ver`, escrita (PUT, so admin) `admin.catalogos`/`editar`.
+ROTAS_NOVAS_PERFIS_RESISTENCIA: dict[str, tuple[str, str]] = {
+    "GET /resistance-profiles/vocabulary": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles/coverage": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles/{equipment_exercise_id}": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles/{equipment_exercise_id}/history": ("exercicios.catalogo", "ver"),
+    "PUT /resistance-profiles/{equipment_exercise_id}": ("admin.catalogos", "editar"),
+    "POST /resistance-profiles/suggest": ("admin.catalogos", "editar"),
+}
 
 # Rotas criadas DEPOIS do retrato congelado dos guards antigos (lote 3A, `app.access_admin`).
 # Unico lugar da lista: os testes que exigem "toda rota viva/convertida esta no retrato" aceitam
@@ -120,6 +148,10 @@ ROTAS_NOVAS_POS_RETRATO: dict[str, tuple[str, str]] = {
     ROTA_NOVA_REGISTRO_EXERCICIO: ("treino.registro", "editar"),
     # #140: exclusao logica de alimento (mesma permissao dos irmaos, acao `excluir`)
     ROTA_NOVA_ALIMENTOS_EXCLUIR: ("nutricao.alimentos", "excluir"),
+    **ROTAS_NOVAS_RECEITAS,
+    **ROTAS_NOVAS_PERFIS_RESISTENCIA,
+    ROTA_NOVA_REDUNDANCIA: ("modelos.treino", "editar"),
+    ROTA_NOVA_DIAGNOSTICO: ("modelos.treino", "ver"),
 }
 
 
@@ -553,10 +585,13 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # #140: + DELETE /nutrition/foods/{food_id}: 370 e 386.
     # #195: + GET /nutrition/foods: 371 e 387.
     # #216: + POST /exercises/logs: 372 e 388.
-    assert len(com_permissao) == 372
+    # #286: + 7 rotas de receitas; #288: + 7 de perfis de resistencia: 386 e 402.
+    # #288 fatia 2: + POST /workout-plan-templates/redundancy-preview: 387 e 403.
+    # #288 fatia 3: + GET /workout-plan-templates/{template_id}/redundancy-diagnostic: 388 e 404.
+    assert len(com_permissao) == 388
     assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 388
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 404
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -571,13 +606,13 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 372
+    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 388
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 388
+    assert len(vivas) == 404
 
 
 def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():
@@ -595,11 +630,12 @@ def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_adm
                     assert declared_permissions(route) == []  # so autenticacao, pinada a parte
                     continue
                 vivas[chave] = declared_permissions(route)
-    # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188) + 1 de alimentos (#195)  + 1 de registro (#216) + 1 de exclusao de alimento (#140)
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1 + 1 + 1 + 1
+    # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188) + 1 de alimentos (#195)  + 1 de registro (#216) + 1 de exclusao de alimento (#140) + 7 de receitas (#286) + 6 de perfis de resistencia (#288)
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1 + 1 + 1 + 1 + 7 + 7 + 1 + 1
     esperadas = set(ROTAS_NOVAS_POS_RETRATO) - {
         ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA,
-        ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR,
+        ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR, *ROTAS_NOVAS_RECEITAS,
+        *ROTAS_NOVAS_PERFIS_RESISTENCIA, ROTA_NOVA_REDUNDANCIA, ROTA_NOVA_DIAGNOSTICO,
     }
     assert set(vivas) == esperadas, sorted(set(vivas) ^ esperadas)
     acao_por_metodo = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}

@@ -130,6 +130,7 @@ def test_create_job_grava_created_at_e_pending(table, monkeypatch) -> None:
         ("nutrition-label-ocr", 480),  # nutricao L6: foto do rotulo na plan-generator (E8)
         ("nutrition-meal-photo", 480),  # nutricao L10: foto do prato na plan-generator
         ("nutrition-plan-suggestion", 120),  # nutricao N6: sugestao de metas na workout-ai
+        ("resistance-profile-suggest", 120),  # #288: sugestao de perfil de resistencia na workout-ai
     ],
 )
 def test_prazo_e_timeout_da_lambda_mais_folga(job_type: str, deadline: int) -> None:
@@ -477,7 +478,7 @@ def _env_var_to_function() -> dict[str, str]:
     return mapping
 
 
-_CONST_RE = re.compile(r'^([A-Z][A-Z0-9_]*)\s*=\s*"([^"]*)"', re.MULTILINE)
+_CONST_RE = re.compile(r'^([A-Z][A-Z0-9_]*)(?::[^=\n]+)?\s*=\s*"([^"]*)"', re.MULTILINE)
 
 
 def _string_constants() -> dict[str, str]:

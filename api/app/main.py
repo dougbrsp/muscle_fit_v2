@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -30,6 +31,7 @@ from .security import (
     Identity,
     MustChangePasswordRequired,
     must_change_password_handler,
+    validation_error_handler,
 )
 from .services import (
     activity_detail,
@@ -116,6 +118,9 @@ app.add_middleware(RequestMemoMiddleware)
 app.add_exception_handler(MustChangePasswordRequired, must_change_password_handler)
 # #237: o mesmo corpo `{"detail", "code"}` (o handler so le `status_code`, `detail` e `code`).
 app.add_exception_handler(TemplateSafetyBlocked, must_change_password_handler)
+
+
+app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 
 @app.get("/health")
@@ -755,6 +760,17 @@ except Exception as exc:
     )
 # END nutrition foods router
 
+# Receitas do usuario (issue #286, migracao 125): alimento source=recipe + versoes + ingredientes.
+try:
+    from app.nutrition_recipes import router as nutrition_recipes_router
+    app.include_router(nutrition_recipes_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_recipes").exception(
+        "Nutrition recipes router não foi carregado. Erro: %s", exc
+    )
+# END nutrition recipes router
+
 # BEGIN nutrition external foods router (plano de nutricao, Lote L3b; sem migracao)
 # Codigo de barras (Open Food Facts, cache em food_items source='off', limite
 # diario do motor) e busca/importacao do USDA FoodData Central. So a api-core
@@ -934,6 +950,17 @@ except Exception as exc:
     )
 # END equipment_exercises router
 
+# BEGIN resistance profiles router (#288: perfil de resistencia por par equipamento x exercicio)
+try:
+    from app.resistance_profiles import router as resistance_profiles_router
+    app.include_router(resistance_profiles_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.resistance_profiles").exception(
+        "Resistance profiles router não foi carregado. Erro: %s", exc
+    )
+# END resistance profiles router
+
 # BEGIN muscle group <-> equipment/exercise navigation router (Fase 4 da
 # reestruturacao de dominio - leitura aditiva via
 # vw_muscle_group_equipment_exercises, ver muscle_group_equipment.py)
@@ -1009,6 +1036,15 @@ except Exception as exc:
     import logging
     logging.getLogger("fitness.workout_plan_templates").exception(
         "Workout plan templates me_router não foi carregado. Erro: %s", exc
+    )
+
+try:
+    from app.exercise_redundancy_routes import router as exercise_redundancy_router
+    app.include_router(exercise_redundancy_router)  # antes do router com "/{template_id}"
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.exercise_redundancy").exception(
+        "Exercise redundancy router não foi carregado. Erro: %s", exc
     )
 
 try:

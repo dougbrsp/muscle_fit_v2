@@ -19,6 +19,9 @@ ATIVA no explícito e no automático, sem o desconto do repouso (a MET segue bru
 `auto_sync_extras`: 673,83 -> 748 (428 + 200 + 120; os extras não têm duração e já não descontavam). Mudaram gasto,
 meta e macros desses cenários e o hash de TODOS (versão do motor no hash).
 
+Exceção documentada (L53, `nutrition-v7`, 2026-11-25): o ciclo com compensação de gordura respeita a faixa de fração de
+gordura da estratégia. Nenhum cenário daqui tem ciclo; só o hash de TODOS mudou (versão do motor no hash).
+
 Não há regra nesta suíte: só literais. O dono dos cálculos segue sendo `energy_expenditure.py`/`daily_target.py`
 (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7)."""
 
@@ -54,36 +57,36 @@ EXTRAS = [
 _CENARIOS = {
     "maintenance/explicit_treino": (("maintenance", "explicit_training", FORCA, [], False),
         # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
-        (2920.0, 428.0, 1.4, 2920.0, 160.0, 387.5, 81.11111111111111, "d5f7ab2c21d1ea3b7ef0b50e6ffdc21052527748afa18a38078c179aee7f66f0")),
+        (2920.0, 428.0, 1.4, 2920.0, 160.0, 387.5, 81.11111111111111, "ed1d0acf144be5bf293ae836f574ab2accfa9a36333c653dde07f2b0eb70a5dc")),
     "maintenance/explicit_descanso": (("maintenance", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "1d51daebefc2d13042a28b762b549ff6253de356d3e518f1523999a3a0ba2627")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "432b810bb73287b0eaec2e2d83e85af5876fa3b7b3e26974ce8f8e92e579041f")),
     "maintenance/embutido_treino": (("maintenance", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "e90e1667741ee30ca435b8a83606d785591c57aa2054d29b9a6b3de72eb29b66")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "d6fc961939c30a67d69acd418a8414f8d731144047de3e3b8ff4cd255e99a99d")),
     "maintenance/embutido_descanso": (("maintenance", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "6cdb2afc3b6a47ca6905bca5f234db812af22391fc2b554d2dc0bace825b35fc")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "47a0394a3de20859fe58da0cad64963dbdd30e2cbad01b59f3cf25adeab8d7ae")),
     "maintenance/auto_sync_extras": (("maintenance", "auto_intervals", FORCA, EXTRAS, True),
         # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
-        (3240.0, 748.0, 1.4, 3240.0, 160.0, 447.5, 90.0, "5074bd5bfa95d9409bfd9bc2436c7983d7b62b3502f365946dc2932f974ef6e2")),
+        (3240.0, 748.0, 1.4, 3240.0, 160.0, 447.5, 90.0, "224723f8966ad2fecf4ac4882558142e750465e824488ed51af98678475cb565")),
     "maintenance/auto_sync_descanso": (("maintenance", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "bb8cc1484c8389736b97d6e7218bd5a76bfc4e0d4afb563e8379eddfb9f39534")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "8e1ee6ababc00bf181777b7d6ba4264da81a7f36c49d22b5794b311946aba4e1")),
     "maintenance/auto_fallback": (("maintenance", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "d03212ef2f12aed411c69e36151cfddd8fd9424fce7945e094c8e74e2d7e897f")),
+        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "fdf67de0138686513cf1be8c95269723b3638c8714813500e57def1bd510c6db")),
     "bulking/explicit_treino": (("bulking", "explicit_training", FORCA, [], False),
         # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
-        (2920.0, 428.0, 1.4, 3212.0, 160.0, 442.25, 89.22222222222223, "fd6fee1db2953b4b07b88e12ed7b48f2d12c81b843f0fc4e6b361aa96eb60a85")),
+        (2920.0, 428.0, 1.4, 3212.0, 160.0, 442.25, 89.22222222222223, "7cf0351e28730b8bc04ed82e6bfbe6b3467976ec6420220ac755c915e1ae6826")),
     "bulking/explicit_descanso": (("bulking", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "0885fab40b41b31149f5fd60f5df86c0c0ddcb2217b385b7e31e87a7ff4107d8")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "c5cb477218414af687498a62079fea6689c1b4bf2cb59f49e599f5560ae623d8")),
     "bulking/embutido_treino": (("bulking", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "e1ec4ba34b4664310e2178bda3ba27833a2203ed8d336e9d96f9e16df4bb9a17")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "e07a01a6dfee4808e7ffd8dda15d082f3a402614703b667ddee4916491cab1de")),
     "bulking/embutido_descanso": (("bulking", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "7dd3881ac0ae3e50af5fd39f9be067a67c94f8faad177b71b697615f34090220")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "3261d01adb241b29d9396cda9342020d45b78cda8d6775277cfee92c4dbabd9d")),
     "bulking/auto_sync_extras": (("bulking", "auto_intervals", FORCA, EXTRAS, True),
         # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
-        (3240.0, 748.0, 1.4, 3564.0, 160.0, 508.25, 99.0, "2effff13104806a884af7cde7c95ef337773d5c0b44dc31f957d38fc6ac4beb5")),
+        (3240.0, 748.0, 1.4, 3564.0, 160.0, 508.25, 99.0, "c1c6ece58653de92a8a0e5b829df4ae1ec0766fe8f6a0218cf9c73ae60f0c095")),
     "bulking/auto_sync_descanso": (("bulking", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "1f11468bd3adb0786a3b6293a303158084907d9ffde108a3446c232a9378cb8f")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "045b3adffc979edee35a1af493fcfa389bcbe1835609595dc5eb884705bceef5")),
     "bulking/auto_fallback": (("bulking", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "8d2dcd1d83aea1bec4bfc70e2039297cf1b8c5430b9f0421bc434d6982f1f47c")),
+        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "d743a87d65a7b61f527064b3f9ede8e0557d3ccf2f5887de6fc098058d07c1e8")),
 }
 
 
@@ -114,7 +117,7 @@ def test_modo_legado_mantem_gasto_meta_macros_e_hash(nome):
     assert alvo.macros.fat_g == pytest.approx(gordura, rel=1e-12)
     # Trava do hash: `inputs_fingerprint` só olha as ENTRADAS (sujeito, plano, contexto do dia) e a versão do motor.
     assert svc.inputs_fingerprint(PLANO_ID, comp) == hash_esperado
-    assert alvo.engine_version == "nutrition-v6"
+    assert alvo.engine_version == "nutrition-v7"
 
 
 def test_embutido_tmb_2020_fator_1725_da_3485_sem_somar_o_treino_de_novo():

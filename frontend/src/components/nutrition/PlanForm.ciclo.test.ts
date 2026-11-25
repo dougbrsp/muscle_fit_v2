@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import motorConstants from '@/lib/motor-constants.generated.json';
 import type { NutritionPlan } from '@/lib/nutrition-types';
+import { planPreviewQuery, updateNutritionPlan } from '@/lib/nutrition-api';
 import { PlanForm, initialState } from './PlanForm';
 
 // A política do ciclo é lembrada ao desligar e religar o ciclo, e vem do plano salvo mesmo sem ciclo.
@@ -70,8 +71,17 @@ function plano(sobre: Record<string, unknown>): NutritionPlan {
   } as unknown as NutritionPlan;
 }
 
-async function montar(p: NutritionPlan) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+vi.mock('@/lib/nutrition-api', async (original) => ({
+  ...(await original<typeof import('@/lib/nutrition-api')>()),
+  updateNutritionPlan: vi.fn(async () => ({})),
+}));
+
+const DIA_GORDURA = { local_date: '2026-11-23', fat_g: 70, limitations: [], macro_kcal_shares: { protein: 0.3, carb: 0.45, fat: 0.25 } };
+const PREVIA = { target: { kcal: 2400, macro_kcal_shares: { protein: 0.3, carb: 0.45, fat: 0.25 } }, week: [DIA_GORDURA], warnings: [] };
+
+async function montar(p: NutritionPlan, previa?: unknown) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  if (previa) client.setQueryData(planPreviewQuery(p).queryKey, previa);
   root = createRoot(host);
   await act(async () => {
     root!.render(
@@ -100,6 +110,57 @@ async function alternarCiclo() {
     chave().click();
   });
 }
+
+const temRotulo = (t: string) => Array.from(host.querySelectorAll('label')).some((l) => l.textContent?.startsWith(t));
+
+describe('PlanForm: gramas manuais', () => {
+  const manual = { protein_g: 160, carb_g: 250, fat_g: 70, training_mode: 'fixed' };
+
+  it('com gramas manuais esconde proteína g/kg e gordura %, mostra kcal e % da API e mantém o envio dos valores do rascunho', async () => {
+    await montar(plano({ manual_targets: manual }), PREVIA);
+    expect(temRotulo('Proteína (g/kg)')).toBe(false);
+    expect(temRotulo('Gordura (% das kcal)')).toBe(false);
+    expect(host.textContent).toContain('30% das kcal');
+    expect(host.textContent).toContain('45% das kcal');
+    expect(host.textContent).toContain('25% das kcal');
+    expect(host.querySelector('[data-testid="manual-energia"]')?.textContent).toContain('2.400');
+    const salvar = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Salvar rascunho')!;
+    await act(async () => {
+      salvar.click();
+    });
+    const enviado = vi.mocked(updateNutritionPlan).mock.calls[0][1];
+    expect(enviado.protein_g_per_kg).toBe(2);
+    expect(enviado.fat_kcal_share).toBe(0.25);
+    expect(enviado.manual_targets).toMatchObject({ protein_g: 160, carb_g: 250, fat_g: 70 });
+  });
+
+  it('formulário editado e não salvo esconde as % e a gordura por dia da prévia salva', async () => {
+    await montar(plano({ manual_targets: manual, cycle_days: { '0': 'high' } }), PREVIA);
+    const gordura = Array.from(host.querySelectorAll<HTMLInputElement>('input')).find(
+      (i) => document.querySelector(`label[for="${i.id}"]`)?.textContent === 'Gordura (g)',
+    )!;
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      set.call(gordura, '80');
+      gordura.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(host.textContent).toContain('Salve para ver as % atualizadas');
+    expect(host.textContent).not.toContain('30% das kcal');
+    expect(host.querySelector('[data-testid="dia-gordura"]')).toBeNull();
+    expect(host.querySelector('[data-testid="manual-energia"]')).toBeNull();
+  });
+
+  it('sem gramas manuais os campos da estratégia aparecem', async () => {
+    await montar(plano({}));
+    expect(temRotulo('Proteína (g/kg)')).toBe(true);
+    expect(temRotulo('Gordura (% das kcal)')).toBe(true);
+  });
+
+  it('ciclo ligado: gordura em g e % por dia vem da prévia', async () => {
+    await montar(plano({ cycle_days: { '0': 'high' } }), PREVIA);
+    expect(host.querySelector('[data-testid="dia-gordura"]')?.textContent).toBe('Gordura 70 g (25% das kcal)');
+  });
+});
 
 describe('PlanForm: política do ciclo lembrada', () => {
   it('estado inicial de plano salvo sem ciclo guarda a política devolvida pela API', () => {

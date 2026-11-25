@@ -82,6 +82,8 @@ GLOBAL_TABLES: tuple[str, ...] = (
     "equipment_exercises",
     "equipment_exercise_mappings",
     "equipment_exercise_technique_overrides",
+    "equipment_exercise_resistance_profiles",  # 126 (#288): perfil por par, todos os pares sao copiados; created_by/reviewed_by anulados
+    "equipment_exercise_resistance_profile_history",  # 126: trilha do perfil; actor_user_id anulado
     "equipment_technique_compatibility",
     "exercise_catalog",
     "exercise_aliases",
@@ -170,8 +172,14 @@ USER_CHILD_TABLES: tuple[ChildSpec, ...] = (
     ChildSpec("exercises", "activity_id", "activities"),
     ChildSpec("exercise_sets", "exercise_id", "exercises"),
     ChildSpec("meal_items", "meal_id", "meals"),  # 082
+    ChildSpec("food_recipe_versions", "food_id", "food_items"),  # 125: só de receitas do usuário (OWNED_PARENT_ONLY)
+    ChildSpec("food_recipe_ingredients", "version_id", "food_recipe_versions"),  # 125
     ChildSpec("workout_plan_exercises", "plan_id", "workout_plans"),
 )
+
+# Filho de tabela mista: só as linhas das pais DO USUÁRIO (owner preenchido), nunca as do
+# catálogo público (`instructions` e `created_by` de receita são texto/autoria de terceiros).
+OWNED_PARENT_ONLY: dict[str, str] = {"food_items": "owner_user_id"}
 
 # Tabelas MISTAS: `owner_user_id` NULL = linha pública do catálogo (copiada); preenchido =
 # privada do dono (copiada só se for do usuário copiado, nunca de outro). Migração 080.
@@ -249,6 +257,8 @@ SOFT_REFERENCES: tuple[tuple[str, str, str, str], ...] = (
     ("food_portions", "food_id", "food_items", "id"),
     ("meal_items", "food_id", "food_items", "id"),
     ("meal_items", "portion_id", "food_portions", "id"),
+    ("food_recipe_versions", "food_id", "food_items", "id"),  # 125 (sem FK declarada)
+    ("food_recipe_ingredients", "food_id", "food_items", "id"),  # 125: ingrediente privado de terceiro derruba a linha
     ("user_favorite_foods", "food_id", "food_items", "id"),
     ("user_favorite_foods", "default_portion_id", "food_portions", "id"),
     ("nutrition_daily_targets", "plan_id", "nutrition_plans", "id"),
@@ -696,6 +706,9 @@ def build_snapshot(reader: Any, schema: Schema, user_id: int) -> dict[str, list[
     for spec in USER_CHILD_TABLES:
         if present(spec.table):
             parents = snap.get(spec.parent_table, [])
+            owner_col = OWNED_PARENT_ONLY.get(spec.parent_table)
+            if owner_col:
+                parents = [r for r in parents if r.get(owner_col) == user_id]
             snap[spec.table] = reader.fetch(tables[spec.table], spec.column, _ids(parents, spec.parent_column))
 
     templates = tables[TEMPLATES_TABLE]

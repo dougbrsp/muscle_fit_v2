@@ -88,6 +88,7 @@ export function NutricaoScreen() {
         <ListRow title="Plano" href="/nutricao/plano" />
         <ListRow title="Check-in" href="/nutricao/checkin" />
         <ListRow title="Alimentos" href="/nutricao/alimentos" />
+        <ListRow title="Receitas" href="/nutricao/receitas" />
         <ListRow title="Preferidos" href="/nutricao/favoritos" />
       </ListGroup>
       {janelas ? (
