@@ -3530,6 +3530,16 @@ Imagens são embutidas como `data:image/png;base64,...`.
 
 # Parte III — Frontend (`frontend/`)
 
+### Prévia do plano de nutrição: `macro_kcal_shares` (25/11/2026)
+
+- Campo novo `macro_kcal_shares` na prévia do plano (`nutrition_plans.py`, `day_public`): alvo (`target`) e cada dia (`week[i]`) trazem `{protein, carb, fat}`, fração das kcal de 0 a 1 que soma 1; `null` sem energia.
+- Dono: `api/app/domain/nutrition/manual_targets.py` (`macro_kcal_shares`). A tela só exibe.
+- Modo manual: a tela mostra % das kcal da prévia, oculta proteína g/kg e gordura %, mas mantém os valores gravados e os envia de volta.
+- Ciclo: a tela mostra gordura em g e % das kcal por dia.
+- Compensação com gordura: o carbo do dia é limitado para a gordura ficar na faixa da estratégia (cutting 15–30%, manutenção e bulking 20–35%); aviso `fat_compensation_carb_limited`. Mapa: `docs/motores/FONTES_DA_VERDADE.md`; decisão: `docs/adr/0029-ciclo-de-carboidratos-com-compensacao-em-gordura.md`.
+- Tela: números da prévia do rascunho salvo ficam ocultos com edição não salva; aviso do ciclo só por dia.
+- Impacto em produção: 1 plano vigente, na política `vary_kcal`; 0 com compensação pela gordura (informado pelo usuário em 25/11/2026). `ENGINE_VERSION` `nutrition-v7`: metas não congeladas de hoje em diante são regravadas (no plano vigente, com os mesmos valores); dias passados e congelados não mudam. Planos com ciclo e compensação podem ter dias com o ciclo não aplicado.
+
 ## 03 — Frontend MuscleFit (versão AWS)
 
 Documento descritivo do frontend em `C:\muscle_fit\frontend` (código em `frontend/src`, 34.048 linhas TS/TSX contadas por `wc -l` em `src/**/*.ts{,x}`; 27.738 delas em `src/app`, 6.240 em `src/lib` + `src/components` + `src/theme.ts`). Descreve o código como ele está em 2026-09-12. Identificadores técnicos mantidos no original. Onde algo não pôde ser confirmado no repositório, está marcado como "não verificado".

@@ -124,7 +124,8 @@ def test_dia_com_e_sem_treino_tem_a_kcal_do_alvo_pre_ciclo(modo):
         for ctx in (_dia(i), _dia(i, is_training_day=True, training_kcal_reported=500.0)):
             pre = compute_daily_target(SUJEITO, sem_ciclo, ctx)
             dia = compute_daily_target(SUJEITO, com, ctx)
-            assert dia.limitations == pre.limitations
+            # A gordura do dia fica na faixa da estratégia: o carbo é limitado e o aviso é o único acréscimo.
+            assert tuple(x for x in dia.limitations if x != cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED) == pre.limitations
             assert dia.macros.kcal == pytest.approx(pre.macros.kcal)
             assert dia.macros.protein_g == pytest.approx(pre.macros.protein_g)
             assert dia.carb_cycle_policy == FAT and dia.day_kind == SEMANA[i]
@@ -149,9 +150,12 @@ def test_padrao_nao_muda_saida_nem_dict():
 
 
 def test_inviavel_no_dia_devolve_alvo_sem_ciclo_e_limitacao():
+    # Sem faixa, gordura final negativa continua inviável (caso real do dono); com faixa, a base fora dela anula o ciclo.
+    alvo = _alvo(gordura=10.0)
+    assert cc._day_with_fat_compensation(alvo, 45.0) == (alvo, (cc.LIMIT_FAT_COMPENSATION_INFEASIBLE,))
     plano = _plano(manual_macros=(160.0, 250.0, 10.0), cycle_kinds=SEMANA, carb_cycle_policy=FAT)
     alto = compute_daily_target(SUJEITO, plano, _dia(0))
-    assert cc.LIMIT_FAT_COMPENSATION_INFEASIBLE in alto.limitations
+    assert cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED in alto.limitations
     assert alto.macros.carb_g == 250.0 and alto.macros.fat_g == 10.0
     assert alto.carb_cycle_policy == cc.DEFAULT_CARB_CYCLE_POLICY
 
@@ -203,17 +207,22 @@ def test_check_cycle_floors_modo_novo_viavel_sem_erro_e_padrao_inalterado():
     assert pl.check_cycle_floors(padrao, SUJEITO) == pl.check_cycle_floors(replace(novo, carb_cycle_policy=cc.DEFAULT_CARB_CYCLE_POLICY), SUJEITO)
 
 
-def test_check_cycle_floors_dia_alto_abaixo_do_piso_de_gordura_e_erro():
-    # Gordura base de 40 g: o dia alto (+~74 g de carbo) tira ~33 g e deixa a gordura abaixo do piso de 10% das kcal.
+def test_check_cycle_floors_gordura_base_fora_da_faixa_anula_o_ciclo_e_so_avisa():
+    # Gordura base de 40 g (fora da faixa): o ciclo do dia é anulado, a gordura não cai mais e só sobra o aviso de faixa.
     cfg = _cfg(manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 40}, cycle_policy="fat_compensation")
-    erros, _ = pl.check_cycle_floors(cfg, SUJEITO)
-    assert erros and all(isinstance(e, str) for e in erros)
-    assert erros == ("manual_blocked_below:fat_g",)  # o código que o dono (`plan.check_cycle_floors`) devolve
+    erros, avisos = pl.check_cycle_floors(cfg, SUJEITO)
+    assert erros == () and avisos and all(a.startswith(pl.WARN_CYCLE_FAT_BELOW_RANGE) for a in avisos)
 
 
-def test_check_cycle_floors_alvo_inviavel_vira_erro_e_aviso_de_faixa_vira_aviso():
+def test_check_cycle_floors_gordura_abaixo_do_piso_bloqueia_e_aviso_de_faixa_vira_aviso():
+    # Gordura base abaixo do piso de bloqueio: o erro é do próprio alvo, barrado já na montagem (o ciclo não o esconde).
+    r = pl.build_plan_settings(
+        strategy="maintenance", cycle_days=CICLO, cycle_policy="fat_compensation",
+        manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 15},
+    )
+    assert not r.ok and r.errors == ("manual_blocked_below:fat_g",)
     cfg = _cfg(manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 30}, cycle_policy="fat_compensation")
-    assert cc.LIMIT_FAT_COMPENSATION_INFEASIBLE in pl.check_cycle_floors(cfg, SUJEITO)[0]
+    assert pl.check_cycle_floors(cfg, SUJEITO)[0] == ()
     # Proteína acima da faixa de manutenção, abaixo do bloqueio: só aviso.
     alta = _cfg(manual_targets={"protein_g": 240, "carb_g": 250, "fat_g": 70}, cycle_policy="fat_compensation")
     erros, avisos = pl.check_cycle_floors(alta, SUJEITO)

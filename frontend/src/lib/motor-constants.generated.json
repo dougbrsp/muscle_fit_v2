@@ -799,7 +799,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v6",
+    "engine_version": "nutrition-v7",
     "sexes": [
       "male",
       "female",
@@ -936,6 +936,8 @@
       "fat_compensation": "Menos carboidrato deixa espaço para mais gordura, mantendo a energia já calculada para o dia. O percentual de gordura ou os macros manuais passam a definir a base, não a gordura final de cada dia."
     },
     "default_carb_cycle_policy": "vary_kcal",
+    "fat_compensation_carb_limited": "fat_compensation_carb_limited",
+    "fat_compensation_cycle_skipped": "fat_compensation_cycle_skipped",
     "day_kinds": [
       "high",
       "normal",

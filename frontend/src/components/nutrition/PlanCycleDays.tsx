@@ -7,7 +7,11 @@ import { NutritionLimitations } from './NutritionLimitations';
 import { fetchCycleDaysFromTemplate, nutritionErrorInfo } from '@/lib/nutrition-api';
 import { CARB_CYCLE_POLICY_OPTIONS, DAY_KIND_OPTIONS, DEFAULT_DAY_KIND, WEEKDAY_OPTIONS, type NutritionCode } from '@/lib/nutrition-constants';
 import { cyclePolicyHint } from '@/lib/nutrition-cycle-policy';
+import { formatGrams, shareToPercent } from '@/lib/nutrition-format';
 import { applyTemplateProposal } from '@/lib/nutrition-plan-form';
+import type { NutritionDayTarget } from '@/lib/nutrition-types';
+import { formatNumberOrDash } from '@/lib/format';
+import motorConstants from '@/lib/motor-constants.generated.json';
 import { BRAND } from '@/theme';
 
 /** Dia da semana ("0" = segunda) -> tipo do dia (código de `DAY_KIND_OPTIONS`). */
@@ -22,7 +26,44 @@ type Props = {
   onPolicyChange: (policy: NutritionCode) => void;
   /** Dono do plano (admin/PT); sem valor, o próprio usuário. */
   userId?: number | null;
+  /** Semana da prévia do rascunho salvo (gordura em g e % por dia, da API); sem ela, não mostra. */
+  week?: NutritionDayTarget[];
 };
+
+/** Avisos do motor que a tela mostra por dia (códigos do espelho gerado): carbo limitado e ciclo não aplicado. */
+const DAY_WARNING_CODES: ReadonlyArray<string> = [
+  motorConstants.nutrition.fat_compensation_carb_limited,
+  motorConstants.nutrition.fat_compensation_cycle_skipped,
+];
+
+/** Lista global sem os avisos que já aparecem no resumo de cada dia (evita repetir). */
+export function withoutDayWarnings<T extends { code: string }>(items: T[]): T[] {
+  return items.filter((item) => !DAY_WARNING_CODES.includes(item.code));
+}
+
+/** Gordura do dia em g e % das kcal (ambos da API) e o aviso de carbo limitado, com o rótulo pronto. */
+export function DayFatSummary({ target }: { target: NutritionDayTarget }) {
+  const pct = shareToPercent(target.macro_kcal_shares?.fat);
+  const avisos = target.limitations.filter((item) => DAY_WARNING_CODES.includes(item.code));
+  return (
+    <>
+      <Text size="xs" c={BRAND.textMuted} data-testid="dia-gordura">
+        Gordura {formatGrams(target.fat_g)}
+        {pct == null ? '' : ` (${formatNumberOrDash(pct, 0)}% das kcal)`}
+      </Text>
+      {avisos.map((aviso) => (
+        <Text key={aviso.code} size="xs" c="yellow" data-testid="dia-aviso-ciclo">
+          {aviso.label}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+/** Dia da semana da data ISO, segunda = "0" (a chave de `cycle_days`). */
+function weekdayKey(isoDate: string): string {
+  return String((new Date(`${isoDate.slice(0, 10)}T12:00:00Z`).getUTCDay() + 6) % 7);
+}
 
 /** Valor inicial: todos os dias com o tipo `normal` (o código vem do motor, `DAY_KIND_OPTIONS`). */
 export function flatCycleDays(normalCode: NutritionCode): CycleDaysValue {
@@ -34,7 +75,7 @@ export function flatCycleDays(normalCode: NutritionCode): CycleDaysValue {
  * baixo, ou puxa a proposta do Modelo de treino e ajusta. A média semanal e os multiplicadores
  * são do motor; aqui só se escolhe o tipo de cada dia.
  */
-export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, policy, onPolicyChange, userId }: Props) {
+export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, policy, onPolicyChange, userId, week }: Props) {
   const normal = DEFAULT_DAY_KIND;
   const templateMutation = useMutation({
     mutationFn: () => fetchCycleDaysFromTemplate(userId ?? null),
@@ -107,6 +148,9 @@ export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, polic
                 onChange={(tipo) => onChange({ ...value, [dia.value]: tipo })}
                 aria-label={dia.label}
               />
+              {week?.filter((alvo) => weekdayKey(alvo.local_date) === dia.value).map((alvo) => (
+                <DayFatSummary key={alvo.local_date} target={alvo} />
+              ))}
             </div>
           ))}
         </Stack>

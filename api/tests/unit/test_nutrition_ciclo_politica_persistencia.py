@@ -194,13 +194,13 @@ def test_combinacao_inviavel_400_rotulado_e_viavel_salva(db):
     cliente = _cliente()
     viavel = _criar(cliente, cycle_days=DIAS_ALTOS, carb_cycle_policy=COMP, manual_targets=MANUAL)
     assert viavel.status_code == 201, viavel.text
-    inviavel = {"cycle_days": DIAS_ALTOS, "carb_cycle_policy": COMP, "manual_targets": {"protein_g": 160, "carb_g": 280, "fat_g": 45}}
+    inviavel = {"cycle_days": DIAS_ALTOS, "carb_cycle_policy": COMP, "manual_targets": {"protein_g": 160, "carb_g": 280, "fat_g": 15}}
     salvar = _criar(cliente, **inviavel)
     assert salvar.status_code == 400, salvar.text
     assert salvar.json()["detail"]["error"] == "invalid_plan" and all(i["label"] for i in salvar.json()["detail"]["errors"])
     previa = cliente.post("/nutrition/plan-preview", json={"strategy": "maintenance", **inviavel})
-    assert previa.status_code == 200 and previa.json()["can_publish"] is False
-    assert previa.json()["blocking"] and all(i["label"] for i in previa.json()["blocking"])
+    # A gordura abaixo do piso de bloqueio é erro do próprio alvo: a prévia também recusa (400), com rótulos.
+    assert previa.status_code == 400 and all(i["label"] for i in previa.json()["detail"]["errors"])
 
 
 # --- check-in ----------------------------------------------------------------------------------------------------

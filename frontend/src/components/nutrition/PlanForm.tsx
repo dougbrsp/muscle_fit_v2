@@ -1,12 +1,13 @@
 'use client';
 
 import { Button, Fieldset, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text, Textarea } from '@mantine/core';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { formatNumberOrDash } from '@/lib/format';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
-import { PlanCycleDays, flatCycleDays, type CycleDaysValue } from './PlanCycleDays';
+import { PlanCycleDays, flatCycleDays, withoutDayWarnings, type CycleDaysValue } from './PlanCycleDays';
 import { PlanSuggestionPanel } from './PlanSuggestionPanel';
-import { createNutritionPlan, nutritionErrorInfo, updateNutritionPlan } from '@/lib/nutrition-api';
+import { createNutritionPlan, nutritionErrorInfo, planPreviewQuery, updateNutritionPlan } from '@/lib/nutrition-api';
 import {
   ACTIVITY_LEVEL_OPTIONS,
   AUTO_TDEE_MODE,
@@ -37,7 +38,7 @@ import {
   type StrategyFormRanges,
 } from '@/lib/nutrition-constants';
 import { cyclePolicyPayload, initialCyclePolicy } from '@/lib/nutrition-cycle-policy';
-import { asField, inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
+import { asField, formatKcal, inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
 import {
   cycleDaysPayload,
   macroPriorityPayload,
@@ -91,6 +92,8 @@ type FormState = {
   cyclePolicy: NutritionCode;
   notes: string;
 };
+
+const SALVE_PARA_VER = 'Salve para ver as % atualizadas';
 
 /** Tipo "normal" do dia (código do motor em `DAY_KIND_OPTIONS`). */
 const NORMAL_DAY_KIND: NutritionCode = DEFAULT_DAY_KIND;
@@ -225,6 +228,18 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
   const adaptativo = form.tdeeMode === ADAPTIVE_TDEE_MODE;
   const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
 
+  // Prévia do rascunho salvo (mesma chave da prévia da tela): kcal e % por macro vêm da API, sem conta aqui.
+  const previewQuery = useQuery({ ...planPreviewQuery(plan ?? { id: 0, updated_at: null, state: '' }), enabled: plan != null && (form.manualOn || form.cycleOn) });
+  const preview = previewQuery.data;
+  // A prévia é do rascunho SALVO: com edição não salva, os números dela não valem para o que está na tela.
+  const semSalvar = plan != null && JSON.stringify(form) !== JSON.stringify(initialState(plan));
+  const shares = preview?.target.macro_kcal_shares;
+  const shareText = (share: number | undefined) => {
+    if (semSalvar && preview) return SALVE_PARA_VER;
+    const pct = shareToPercent(share);
+    return pct == null ? undefined : `${formatNumberOrDash(pct, 0)}% das kcal`;
+  };
+
   function update(patch: Partial<FormState>) {
     setForm((atual) => ({ ...atual, ...patch }));
   }
@@ -241,6 +256,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
   const payload: NutritionPlanSettingsPayload = {
     strategy: form.strategy ?? '',
     advanced: usaSuperavit ? form.advanced : false,
+    // Com gramas manuais os campos só ficam ocultos: o rascunho mantém os valores (o motor os ignora nas gramas).
     protein_g_per_kg: inputNumberOrNull(form.protein),
     fat_kcal_share: percentToShare(form.fatPercent),
     weekly_rate_share: usaRitmo ? percentToShare(form.ratePercent) : null,
@@ -319,27 +335,31 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
 
           {ranges && (
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <NumberInput
-                label="Proteína (g/kg)"
-                description={[proteinBasis, rangeHint(ranges.protein_g_per_kg, ' g/kg')].filter(Boolean).join(' · ')}
-                value={form.protein}
-                onChange={(protein) => update({ protein })}
-                {...bounds(ranges.protein_g_per_kg)}
-                step={0.1}
-                decimalScale={2}
-                decimalSeparator=","
-              />
-              <NumberInput
-                label="Gordura (% das kcal)"
-                description={rangeHint(ranges.fat_kcal_share, '%', true)}
-                value={form.fatPercent}
-                onChange={(fatPercent) => update({ fatPercent })}
-                {...percentBounds(ranges.fat_kcal_share)}
-                step={1}
-                decimalScale={1}
-                decimalSeparator=","
-                suffix="%"
-              />
+              {!form.manualOn && (
+                <NumberInput
+                  label="Proteína (g/kg)"
+                  description={[proteinBasis, rangeHint(ranges.protein_g_per_kg, ' g/kg')].filter(Boolean).join(' · ')}
+                  value={form.protein}
+                  onChange={(protein) => update({ protein })}
+                  {...bounds(ranges.protein_g_per_kg)}
+                  step={0.1}
+                  decimalScale={2}
+                  decimalSeparator=","
+                />
+              )}
+              {!form.manualOn && (
+                <NumberInput
+                  label="Gordura (% das kcal)"
+                  description={rangeHint(ranges.fat_kcal_share, '%', true)}
+                  value={form.fatPercent}
+                  onChange={(fatPercent) => update({ fatPercent })}
+                  {...percentBounds(ranges.fat_kcal_share)}
+                  step={1}
+                  decimalScale={1}
+                  decimalSeparator=","
+                  suffix="%"
+                />
+              )}
               {usaRitmo && (
                 <NumberInput
                   label="Ritmo de perda (% do peso por semana)"
@@ -488,7 +508,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
           <Stack gap="xs">
             <Switch
               label="Definir as gramas manualmente"
-              description="Você fixa proteína, carboidrato e gordura. O motor confere as faixas, avisa e precisa do seu peso registrado."
+              description="Você fixa proteína, carboidrato e gordura em gramas; proteína (g/kg) e gordura (%) da estratégia não valem. As kcal e a % de cada macro vêm do motor, do rascunho já salvo. O motor confere as faixas, avisa e precisa do seu peso registrado."
               checked={form.manualOn}
               onChange={(event) => update({ manualOn: event.currentTarget.checked })}
             />
@@ -506,6 +526,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
               <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md">
                 <NumberInput
                   label="Proteína (g)"
+                  description={shareText(shares?.protein)}
                   value={form.manualProtein}
                   onChange={(manualProtein) => update({ manualProtein })}
                   min={0}
@@ -514,6 +535,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
                 />
                 <NumberInput
                   label="Carboidrato (g)"
+                  description={shareText(shares?.carb)}
                   value={form.manualCarb}
                   onChange={(manualCarb) => update({ manualCarb })}
                   min={0}
@@ -522,12 +544,18 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
                 />
                 <NumberInput
                   label="Gordura (g)"
+                  description={shareText(shares?.fat)}
                   value={form.manualFat}
                   onChange={(manualFat) => update({ manualFat })}
                   min={0}
                   decimalScale={0}
                   inputMode="numeric"
                 />
+                {preview && !semSalvar && (
+                  <Text size="xs" c={BRAND.textMuted} data-testid="manual-energia">
+                    Energia do rascunho salvo: {formatKcal(preview.target.kcal)}
+                  </Text>
+                )}
               </SimpleGrid>
             )}
           </Stack>
@@ -541,7 +569,9 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
             value={form.cycleDays}
             onChange={(cycleDays) => update({ cycleDays })}
             userId={userId}
+            week={semSalvar ? undefined : preview?.week}
           />
+          {form.cycleOn && preview && !semSalvar && <NutritionLimitations items={withoutDayWarnings(preview.warnings)} title="Avisos do rascunho salvo" />}
 
           <Textarea
             label="Observações"

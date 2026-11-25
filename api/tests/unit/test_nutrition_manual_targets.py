@@ -259,3 +259,11 @@ def test_limites_de_bloqueio_estao_fora_das_faixas_de_aviso():
         gordura_piso, gordura_teto = st.fat_share_range_for(estrategia)
         assert mt.FAT_BLOCK_MIN_KCAL_SHARE < gordura_piso and mt.FAT_BLOCK_MAX_KCAL_SHARE > gordura_teto
     assert mt.CARB_WARN_MAX_G_PER_KG < mt.CARB_BLOCK_MAX_G_PER_KG
+
+
+def test_macro_kcal_shares_somam_um_e_sao_nulas_sem_energia():
+    from app.domain.nutrition.manual_targets import macro_kcal_shares
+
+    f = macro_kcal_shares(100, 200, 50)  # 400 + 800 + 450 kcal
+    assert sum(f.values()) == pytest.approx(1.0) and f["fat"] == pytest.approx(450 / 1650)
+    assert macro_kcal_shares(0, 0, 0) is None and macro_kcal_shares(-1, 2, 3) is None

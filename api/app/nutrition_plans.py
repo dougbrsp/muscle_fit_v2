@@ -64,6 +64,7 @@ from .domain.nutrition.daily_target import (
     recompute_window,
     week_window,
 )
+from .domain.nutrition.manual_targets import macro_kcal_shares
 from .domain.nutrition.plan import (
     ERR_DRAFT_LIMIT,
     MAX_DRAFTS_PER_USER,
@@ -428,12 +429,18 @@ def _no_published_plan(message: str) -> HTTPException:
 # ---------------------------------------------------------------------------
 
 
+def _day_with_shares(comp: DayComputation, today: date) -> dict[str, Any]:
+    """Dia da prévia + `macro_kcal_shares` (`{protein, carb, fat}`, fração das kcal pelo motor; `None` sem energia)."""
+    macros = comp.target.macros
+    return {**day_public(comp, today), "macro_kcal_shares": macro_kcal_shares(macros.protein_g, macros.carb_g, macros.fat_g)}
+
+
 def _target_detail(comp: DayComputation, today: date) -> dict[str, Any]:
     meta = comp.target
     alvo = meta.kcal_target.to_dict()
     alvo["clamped_by"] = nutrition_labels.limitation_items(meta.kcal_target.clamped_by)
     return {
-        **day_public(comp, today),
+        **_day_with_shares(comp, today),
         # Diferença REAL para o gasto total (já com gramas manuais, ciclo e prioridade); `kcal_target.delta_kcal`
         # é só a da estratégia.
         "kcal_delta": meta.kcal_delta,
@@ -549,7 +556,7 @@ def _preview_payload(
         "subject": hoje.subject.to_dict(),
         "target": _target_detail(hoje, today),
         "goal": _goal(hoje),
-        "week": [day_public(comp, today) for comp in semana],
+        "week": [_day_with_shares(comp, today) for comp in semana],
         # Os dias que a publicação de hoje de fato cria (do dia de hoje ao fim da semana): a tela só mostra estes.
         "publish_days": [dia.isoformat() for dia in publication_window(today, None).days()],
         "limitations": nutrition_labels.limitation_items(limitacoes),

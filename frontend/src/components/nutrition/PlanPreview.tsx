@@ -26,7 +26,8 @@ import {
   nutritionLabel,
   nutritionNotice,
 } from '@/lib/nutrition-constants';
-import { formatGrams, formatKcal } from '@/lib/nutrition-format';
+import { formatGrams, formatKcal, weekdayShort } from '@/lib/nutrition-format';
+import { DayFatSummary, withoutDayWarnings } from './PlanCycleDays';
 import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
 import type {
   NutritionGoal,
@@ -272,7 +273,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
         {preview.manual_check && <ManualCheckCard check={preview.manual_check} />}
       </SimpleGrid>
       {isDraft && <NutritionLimitations items={preview.blocking} title="Este plano não pode ser publicado" tone="error" />}
-      <NutritionLimitations items={preview.warnings} title="Avisos do plano (não impedem publicar)" />
+      <NutritionLimitations items={withoutDayWarnings(preview.warnings)} title="Avisos do plano (não impedem publicar)" />
 
       <Title order={4} c={BRAND.textPrimary}>
         {isDraft ? 'Dias que o plano vai valer nesta semana' : 'Semana atual'}
@@ -283,7 +284,19 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
           .map((target) => ({ local_date: target.local_date, target }))}
         today={preview.today}
       />
-      <NutritionLimitations items={preview.limitations} title="Avisos do motor nesta semana" />
+      <Stack gap={4} data-testid="gordura-por-dia">
+        {preview.week
+          .filter((target) => !isDraft || preview.publish_days.includes(target.local_date))
+          .map((target) => (
+            <div key={target.local_date}>
+              <Text size="xs" c="dimmed">
+                {weekdayShort(target.local_date)} {formatDateBR(target.local_date).slice(0, 5)}
+              </Text>
+              <DayFatSummary target={target} />
+            </div>
+          ))}
+      </Stack>
+      <NutritionLimitations items={withoutDayWarnings(preview.limitations)} title="Avisos do motor nesta semana" />
 
       {isDraft && (
         <Group

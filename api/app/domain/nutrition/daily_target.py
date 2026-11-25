@@ -84,7 +84,7 @@ from .weekly_budget import week_days
 # dono). A troca de versão faz `nutrition_targets_service._unchanged` regravar as metas NÃO congeladas (D-1, hoje e
 # futuras); congeladas ficam como estão.
 # v4 (ADR 0009): a proteína do corte passa a g/kg de PESO TOTAL (antes massa livre de gordura), faixa 1,8 a 2,7, padrão 2,6.
-ENGINE_VERSION: Final[str] = "nutrition-v6"  # v6: prioridade nutricional do dia (#272); v5: kcal informada do Intervals entra ativa (ADR 0016)
+ENGINE_VERSION: Final[str] = "nutrition-v7"  # v7: ciclo com compensação de gordura respeita a faixa de fração da estratégia (L53); v6: prioridade nutricional do dia (#272); v5: kcal informada do Intervals entra ativa (ADR 0016)
 
 LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycle"
 # Dia futuro: o treino ainda não aconteceu e a atribuição de Modelo só entra no
@@ -494,9 +494,14 @@ def compute_daily_target(
             metas, base, tipo_dia, plan_params.cycle_kinds, subject.weight_kg,
             keep_fat_share=plan_params.manual_macros is None,
             policy=plan_params.carb_cycle_policy,
+            fat_share_range=strategy_mod.fat_share_range_for(params.strategy),
         )
         # Compensação inviável: o dia saiu SEM ciclo, então a política aplicada é a padrão (a limitação explica).
-        inviavel = {carb_cycling.LIMIT_FAT_COMPENSATION_INFEASIBLE, carb_cycling.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED}
+        inviavel = {
+            carb_cycling.LIMIT_FAT_COMPENSATION_INFEASIBLE,
+            carb_cycling.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED,
+            carb_cycling.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED,
+        }
         if not inviavel.intersection(limitacoes_ciclo):
             politica_aplicada = plan_params.carb_cycle_policy
     elif plan_params.carb_cycling_enabled:
