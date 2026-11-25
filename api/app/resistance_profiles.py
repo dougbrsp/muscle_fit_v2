@@ -12,8 +12,9 @@ Vocabulario, validacao, transicao de status, confiabilidade e assinatura sao do 
     PUT  /resistance-profiles/{equipment_exercise_id}   admin; substituicao completa (status obrigatorio)
     POST /resistance-profiles/suggest                    admin; job assincrono de sugestao por IA (202 `{job_id}`)
 
-A sugestao por IA (`resistance_profile_ai.py`, Lambda `musclefit-workout-ai`) e de ate `SUGGEST_MAX_PAIRS` pares
-por job, sem cota de IA por usuario (admin do catalogo); a IA so cria `suggested`. Sem ids, escolhe pares pendentes
+A sugestao por IA (`resistance_profile_ai.py`, Lambda `musclefit-workout-ai`) e de ate `SUGGEST_PAIRS_PER_JOB` pares
+por job; a rota aceita ate `SUGGEST_MAX_PAIRS_PER_REQUEST` pares e os divide em varios jobs (`job_ids`; `job_id` e o
+primeiro; `failed_batches` conta blocos nao despachados). Sem cota de IA por usuario (admin do catalogo); a IA so cria `suggested`. Sem ids, escolhe pares pendentes
 (sem perfil primeiro, depois os sugeridos mais antigos); sem pares, nao cria job (`job_id` nulo).
 
 Permissoes como `equipment_exercises.py`: leitura `exercicios.catalogo`/`ver`, escrita `admin.catalogos`/`editar`.
@@ -258,30 +259,44 @@ def suggest_profiles(
                 cur.execute(SUGGEST_PENDING_SQL.format(filters=filtros), (*params, payload.limit))
                 ids = [int(r["equipment_exercise_id"]) for r in cur.fetchall() or []]
     if not ids:
-        return {"job_id": None, "pairs": 0}
+        return {"job_ids": [], "job_id": None, "pairs": 0, "failed_batches": 0}
     solicitante = int(identity.user_id)
-    try:
-        job_id = async_jobs.create_job(
-            SUGGEST_JOB_TYPE,
-            request={"payload": {"equipment_exercise_ids": ids}, "user_id": solicitante},
-            owner_user_id=solicitante,
-        )
-        async_jobs.invoke_async(
-            "WORKOUT_AI_FUNCTION_NAME",
-            {
-                "job_id": job_id,
-                "job_type": SUGGEST_JOB_TYPE,
-                "payload": {"equipment_exercise_ids": ids},
-                "user_id": solicitante,
-            },
-        )
-    except Exception as exc:
-        logger.exception("Falha ao despachar a sugestao de perfis de resistencia por IA")
+    por_job = rp.SUGGEST_PAIRS_PER_JOB
+    job_ids: list = []
+    falhas = 0
+    for i in range(0, len(ids), por_job):
+        bloco = ids[i : i + por_job]
+        job_id = None
+        try:
+            job_id = async_jobs.create_job(
+                SUGGEST_JOB_TYPE,
+                request={"payload": {"equipment_exercise_ids": bloco}, "user_id": solicitante},
+                owner_user_id=solicitante,
+            )
+            async_jobs.invoke_async(
+                "WORKOUT_AI_FUNCTION_NAME",
+                {
+                    "job_id": job_id,
+                    "job_type": SUGGEST_JOB_TYPE,
+                    "payload": {"equipment_exercise_ids": bloco},
+                    "user_id": solicitante,
+                },
+            )
+            job_ids.append(job_id)
+        except Exception:
+            falhas += 1
+            logger.exception("Falha ao despachar um bloco da sugestao de perfis de resistencia por IA")
+            if job_id is not None:  # job criado e nao despachado: nao deixa orfao em pending
+                try:
+                    async_jobs.mark_failed(job_id, "dispatch_failed")
+                except Exception:
+                    logger.exception("Falha ao marcar como falho o job orfao %s", job_id)
+    if not job_ids:
         raise HTTPException(
             status_code=503,
             detail={"error": "suggest_dispatch_failed", "message": "Não foi possível iniciar a sugestão por IA."},
-        ) from exc
-    return {"job_id": job_id, "pairs": len(ids)}
+        )
+    return {"job_ids": job_ids, "job_id": job_ids[0], "pairs": len(ids), "failed_batches": falhas}
 
 
 @router.get("/vocabulary", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])

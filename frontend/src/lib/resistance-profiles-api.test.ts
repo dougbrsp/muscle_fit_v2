@@ -51,10 +51,30 @@ describe('cliente de perfis de resistência', () => {
     expect(await suggestProfiles(null)).toBeNull();
     expect(pollAsyncJob).not.toHaveBeenCalled();
 
-    apiFetch.mockResolvedValueOnce({ job_id: 'j1', pairs: 2 });
+    apiFetch.mockResolvedValueOnce({ job_ids: ['j1'], job_id: 'j1', pairs: 2, failed_batches: 0 });
     pollAsyncJob.mockResolvedValueOnce({ processed: 2, suggested: 1, skipped: 1, failed: [] });
-    expect(await suggestProfiles([1, 2])).toEqual({ processed: 2, suggested: 1, skipped: 1, failed: [] });
+    expect(await suggestProfiles([1, 2])).toEqual({
+      processed: 2, suggested: 1, skipped: 1, failed: [], not_processed: 0, batches: 1, failed_batches: 0,
+    });
     expect(pollAsyncJob.mock.calls[0][0]).toBe('j1');
+  });
+
+  it('sugerir: soma vários jobs, conta job que falha e lote não despachado, e reporta progresso', async () => {
+    apiFetch.mockResolvedValueOnce({ job_ids: ['a', 'b', 'c'], job_id: 'a', pairs: 15, failed_batches: 1 });
+    pollAsyncJob.mockImplementation(async (id: string) => {
+      if (id === 'b') throw new Error('expirou');
+      return id === 'a'
+        ? { processed: 6, suggested: 4, skipped: 1, failed: [{ id: 9, code: 'x' }] }
+        : { processed: 3, suggested: 1, skipped: 0, failed: [{ id: 10, code: 'not_processed' }] };
+    });
+    const progress: [number, number][] = [];
+    const r = await suggestProfiles([1], (d, t) => progress.push([d, t]));
+    expect(r).toEqual({
+      processed: 9, suggested: 5, skipped: 1, failed: [{ id: 9, code: 'x' }, { id: 10, code: 'not_processed' }],
+      not_processed: 1, batches: 4, failed_batches: 2,
+    });
+    expect(progress[0]).toEqual([1, 4]);
+    expect(progress[progress.length - 1]).toEqual([4, 4]);
   });
 
   it('payload rápido preserva o perfil e troca só o estado', () => {

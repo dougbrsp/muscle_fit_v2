@@ -18,6 +18,8 @@ export type ResistanceVocabulary = { version: string } & Record<ComponentField |
     human_review_statuses: string[];
     /** Teto de pares por pedido de sugestão por IA. */
     suggest_max_pairs: number;
+    /** Pares por job (cada clique vira vários jobs). */
+    suggest_pairs_per_job: number;
   };
 
 export type ResistanceCoverage = {
@@ -79,7 +81,7 @@ export type ResistanceHistoryEntry = {
   created_at: string;
 };
 
-export type SuggestDispatch = { job_id: string | null; pairs: number };
+export type SuggestDispatch = { job_ids?: string[]; job_id: string | null; pairs: number; failed_batches?: number };
 export type SuggestResult = {
   processed: number;
   suggested: number;
@@ -121,17 +123,57 @@ export function buildSuggestBody(ids: number[] | null): { equipment_exercise_ids
   return ids && ids.length > 0 ? { equipment_exercise_ids: ids } : {};
 }
 
-/** Dispara o job e espera o resultado. `null` = nada pendente (a API não criou job). */
-export async function suggestProfiles(ids: number[] | null): Promise<SuggestResult | null> {
+/** Código de `failed` que a API usa para par que o job não chegou a processar (dono: resistance_profile_ai.py). */
+const NOT_PROCESSED_CODE = 'not_processed';
+
+export type SuggestSummary = SuggestResult & {
+  /** Pares que um job não chegou a processar (repetir o pedido). */
+  not_processed: number;
+  batches: number;
+  /** Lotes que a API não despachou, ou cujo job falhou/expirou. */
+  failed_batches: number;
+};
+
+/**
+ * Dispara os jobs (um por lote) e acompanha todos em paralelo, somando os resultados. Job que falha ou expira conta
+ * como lote com erro sem derrubar os demais. `null` = nada pendente (a API não criou job).
+ */
+export async function suggestProfiles(
+  ids: number[] | null,
+  onProgress?: (done: number, total: number) => void,
+): Promise<SuggestSummary | null> {
   const dispatch = await apiFetch<SuggestDispatch>('/resistance-profiles/suggest', {
     method: 'POST',
     body: JSON.stringify(buildSuggestBody(ids)),
   });
-  if (!dispatch.job_id) return null;
-  return pollAsyncJob<SuggestResult>(dispatch.job_id, {
-    failedFallbackMessage: 'A sugestão por IA falhou. Tente novamente.',
-    timeoutMessage: 'Tempo esgotado aguardando a sugestão por IA. Atualize a lista em instantes.',
-  });
+  const jobIds = dispatch.job_ids ?? (dispatch.job_id ? [dispatch.job_id] : []);
+  const dispatchFailed = dispatch.failed_batches ?? 0;
+  if (jobIds.length === 0 && dispatchFailed === 0) return null;
+  const total = jobIds.length + dispatchFailed;
+  let done = dispatchFailed;
+  onProgress?.(done, total);
+  const summary: SuggestSummary = {
+    processed: 0, suggested: 0, skipped: 0, failed: [], not_processed: 0, batches: total, failed_batches: dispatchFailed,
+  };
+  await Promise.all(
+    jobIds.map(async (id) => {
+      try {
+        const r = await pollAsyncJob<SuggestResult>(id, {
+          failedFallbackMessage: 'A sugestão por IA falhou. Tente novamente.',
+          timeoutMessage: 'Tempo esgotado aguardando a sugestão por IA. Atualize a lista em instantes.',
+        });
+        summary.processed += r.processed;
+        summary.suggested += r.suggested;
+        summary.skipped += r.skipped;
+        summary.failed.push(...r.failed);
+        summary.not_processed += r.failed.filter((f) => f.code === NOT_PROCESSED_CODE).length;
+      } catch {
+        summary.failed_batches += 1;
+      }
+      onProgress?.(++done, total);
+    }),
+  );
+  return summary;
 }
 
 /** Payload de substituição completa a partir do perfil atual, trocando só o estado. */

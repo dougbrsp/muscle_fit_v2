@@ -97,12 +97,12 @@ def test_suggested_existente_e_atualizado_com_historico(db, monkeypatch):
 
 
 def test_teto_de_pares_e_ids_invalidos_ou_repetidos(db, monkeypatch):
-    for pid in range(200, 200 + dono.SUGGEST_MAX_PAIRS + 5):
+    for pid in range(200, 200 + dono.SUGGEST_PAIRS_PER_JOB + 5):
         db.add_pair(pid, 1, 10)
-    chamadas = _ia(monkeypatch, *[_resposta() for _ in range(dono.SUGGEST_MAX_PAIRS)])
+    chamadas = _ia(monkeypatch, *[_resposta() for _ in range(dono.SUGGEST_PAIRS_PER_JOB)])
     ids = [True, 0, -1, "x", 200, 200, *range(201, 220)]
     out = mod.suggest_pairs(ids, USER)
-    assert out["processed"] == len(chamadas) == dono.SUGGEST_MAX_PAIRS
+    assert out["processed"] == len(chamadas) == dono.SUGGEST_PAIRS_PER_JOB
 
 
 def test_erro_da_ia_num_par_nao_derruba_os_outros(db, monkeypatch):
@@ -148,12 +148,12 @@ def test_chamada_perto_do_fim_recebe_timeout_menor(db, monkeypatch):
 
 
 def test_pares_acima_do_teto_viram_not_processed(db, monkeypatch):
-    for pid in range(200, 200 + dono.SUGGEST_MAX_PAIRS + 2):
+    for pid in range(200, 200 + dono.SUGGEST_PAIRS_PER_JOB + 2):
         db.add_pair(pid, 1, 10)
-    _ia(monkeypatch, *[_resposta() for _ in range(dono.SUGGEST_MAX_PAIRS)])
-    ids = list(range(200, 200 + dono.SUGGEST_MAX_PAIRS + 2))
+    _ia(monkeypatch, *[_resposta() for _ in range(dono.SUGGEST_PAIRS_PER_JOB)])
+    ids = list(range(200, 200 + dono.SUGGEST_PAIRS_PER_JOB + 2))
     out = mod.suggest_pairs(ids, USER)
-    assert out["failed"] == [{"id": i, "code": mod.ERR_NOT_PROCESSED} for i in ids[dono.SUGGEST_MAX_PAIRS:]]
+    assert out["failed"] == [{"id": i, "code": mod.ERR_NOT_PROCESSED} for i in ids[dono.SUGGEST_PAIRS_PER_JOB:]]
 
 
 def test_rag_garante_o_rag_local_antes_de_ler(monkeypatch, tmp_path):

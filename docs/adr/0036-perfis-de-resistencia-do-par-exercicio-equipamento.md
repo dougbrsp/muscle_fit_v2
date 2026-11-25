@@ -130,7 +130,7 @@ Branch `feat/perfis-resistencia-tela-l43`, sem commit. Não promovido a produç�
 - **Aprovar e rejeitar.** Os botões rápidos gravam o estado que a API informa em `actions` (`APPROVE_STATUS` = `reviewed`; `REJECT_STATUS` = `rejected`, no dono). O front não escreve código de estado. Aparecem só para par com perfil. `verified` não tem botão rápido: sai pelo editor.
 - **Estado inicial e confirmação.** O editor começa no estado que o dono informa em `export_vocabulary()["default_status"]` (`ADMIN_DEFAULT_STATUS` = `APPROVE_STATUS`, hoje `reviewed`) quando o par não tem perfil; par com perfil abre com o estado gravado. O front não deduz o estado pela ordem da lista nem por outro campo. Aprovar e rejeitar abrem um diálogo de confirmação com motivo opcional ("Motivo (opcional)") e só gravam ao confirmar. Razão da confirmação: o botão da lista grava de imediato, sem o par à vista; o diálogo dá a chance de revisar antes.
 - **Histórico.** `GET /resistance-profiles/{id}/history`; a tela mostra data, origem, motivo e campos alterados (`changedFields`).
-- **Sugerir por IA.** Sem seleção, pede os pendentes; com seleção, pede os pares marcados. O teto vem de `suggest_max_pairs` (`SUGGEST_MAX_PAIRS`, 6): acima dele o botão fica desligado e a mensagem mostra o limite. O resultado vem do job (`pollAsyncJob`) e mostra sugeridos, pulados e falhas com código. Quem decide o teto é o dono e `ResistanceSuggestIn` (422 acima de 6); a tela só o exibe.
+- **Sugerir por IA.** Sem seleção, pede os pendentes; com seleção, pede os pares marcados. O teto vem de `suggest_max_pairs` (30 desde 25/11/2026, ver a decisão dessa data; era 6): acima dele o botão fica desligado e a mensagem mostra o limite. O resultado vem do job (`pollAsyncJob`) e mostra sugeridos, pulados e falhas com código. Quem decide o teto é o dono e `ResistanceSuggestIn` (422 acima de 6); a tela só o exibe.
 - **Permissões.** A aba só aparece com leitura (`exercicios.catalogo`/`ver`). Checkboxes, sugerir, aprovar, rejeitar e editar exigem `canEdit` (`admin.catalogos`/`editar`). Servidor é a autoridade: 403 vira mensagem; 422 tipado vira campo e código.
 - **Sem regra no front.** A tela não tem código de vocabulário, transição, assinatura nem regra de revisão. `FIELD_TITLES` são rótulos de apresentação dos componentes.
 - **Não verificado neste lote:** a origem de `canView`/`canEdit` no componente pai `EquipamentosExerciciosClient.tsx` (não relido aqui); os testes e a guarda (não executados); a tela no navegador.
@@ -247,6 +247,27 @@ Branch `feat/redundancia-geracao-l47`, sem commit. Não promovida a produção.
 - **Trade-off.** A cobertura de resistência depende de revisão humana par a par. Pares sem perfil ficam sem classe em vez de receber um palpite.
 - **Consequência.** Nenhuma pendência de nível 1 ou 3 permanece. Reabrir só com issue própria e dado de fabricante ou medição revisado.
 - **Impacto em produção.** Nenhum. Decisão de escopo, sem código novo; medido por leitura do código e da seção de pendências.
+
+## Decisão de 25/11/2026: sugestão em vários jobs
+
+Substitui o teto de 6 pares por clique dos lotes 42b e 43. `SUGGEST_MAX_PAIRS` saiu do código; as menções a ele nos lotes 42, 42b e 43 acima são histórico.
+
+- **Contexto.** Cada job roda numa invocação da Lambda `musclefit-workout-ai` (timeout de 60 s, `infra/lambda_workout_ai.tf`) e consulta a IA um par por vez. O tempo de uma invocação, não o número de pares, limita um job.
+- **Decisão do usuário (25/11/2026).** Um clique aceita até 30 pares (`SUGGEST_MAX_PAIRS_PER_REQUEST = 30`, dono `api/app/domain/resistance_profile.py`). A rota divide os pares em blocos de no máximo 6 (`SUGGEST_PAIRS_PER_JOB = 6`). Cada bloco vira um job e uma invocação assíncrona, em paralelo. Não muda infraestrutura.
+- **Alternativas consideradas.**
+  - Subir o timeout da Lambda: recusado; mexe em infraestrutura e o limite continuaria existindo.
+  - Um job único com 30 pares: recusado; ultrapassa o tempo de uma invocação.
+  - Enfileirar no front, um clique por vez: recusado; a tela não deve orquestrar a IA.
+  - Teto por job de 10 (lote 42): já tinha sido reduzido a 6 no lote 42b por estimativa de tempo (não medida).
+- **Contrato da rota.** `POST /resistance-profiles/suggest` (`api/app/resistance_profiles.py`) responde 202 `{job_ids, job_id, pairs, failed_batches}`. `job_id` é o primeiro de `job_ids`. `pairs` conta todos os pares pedidos, inclusive os de bloco que falhou. Bloco que não despacha: o job criado vira `failed` com `dispatch_failed`, os demais seguem, e `failed_batches` conta o bloco. Nenhum bloco despachado: 503 `suggest_dispatch_failed`. Sem pares: `{job_ids: [], job_id: null, pairs: 0, failed_batches: 0}`. Entrada acima de 30 pares, ou id inválido, é 422 (`ResistanceSuggestIn`, `api/app/request_models.py`).
+- **Tela.** `ResistanceProfilesTab.tsx` mostra "Processando lote X de Y" e soma o resultado. `frontend/src/lib/resistance-profiles-api.ts` acompanha cada job com `pollAsyncJob`, em paralelo. O teto do botão vem de `vocabulary.suggest_max_pairs` (30); a tela não tem número próprio.
+- **Trade-offs.**
+  - Um clique de 30 pares usa 5 invocações.
+  - A Lambda `musclefit-workout-ai` tem concorrência reservada de 10 (`infra/variables.tf`, chave `workout-ai`), compartilhada com a IA do Modo Treino. Se a reserva estourar, a AWS reenfileira o evento assíncrono por até 6 h (`infra/lambda_async_invoke_config.tf`). Job que não rodar a tempo vira `failed`/`worker_lost` pelo M73.
+  - Uso só por admin do catálogo e raro, então o risco de disputa com o Modo Treino é baixo, mas não medido.
+- **Consequências.** O teto do clique sobe de 6 para 30; o teto por job continua 6. O worker mantém a guarda de `SUGGEST_PAIRS_PER_JOB` (`api/app/resistance_profile_ai.py`): par acima do teto do job sai como `not_processed`. A rota nunca manda esse caso.
+- **Impacto em produção.** Por leitura do código, 25/11/2026: nenhuma tela de usuário final muda, e a rota segue só para o admin do catálogo. Não medido em produção.
+- **Não verificado nesta decisão:** testes unitários da mudança (não executados nesta tarefa); concorrência real com o Modo Treino sob carga; o clique de 30 pares em produção.
 
 ## Verificação
 

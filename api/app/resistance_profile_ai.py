@@ -9,7 +9,7 @@ chama o modelo leve e grava. A IA só cria `suggested`; nunca sobrescreve revisa
 
 Um par com falha (IA, resposta inválida, gravação) não derruba o lote: entra em `failed` com o código.
 Sem cota de IA por usuário: a rota é do admin do catálogo (`admin.catalogos:editar`) e o job é limitado a
-`rp.SUGGEST_MAX_PAIRS` pares.
+`rp.SUGGEST_PAIRS_PER_JOB` pares.
 
 `prompt_version` / mudanças:
 - resistance-suggest-v1 (2026-11-23): versão inicial.
@@ -208,8 +208,8 @@ def suggest_pairs(ids: Sequence[Any], user_id: int) -> dict[str, Any]:
         if isinstance(i, int) and not isinstance(i, bool) and i > 0 and i not in pares:
             pares.append(i)
     inicio = _now()
-    acima_do_teto = pares[rp.SUGGEST_MAX_PAIRS:]
-    pares = pares[: rp.SUGGEST_MAX_PAIRS]
+    acima_do_teto = pares[rp.SUGGEST_PAIRS_PER_JOB:]
+    pares = pares[: rp.SUGGEST_PAIRS_PER_JOB]
     out: dict[str, Any] = {
         "processed": 0, "suggested": 0, "skipped": 0, "failed": [], "model": None,
         "prompt_version": PROMPT_VERSION, "vocabulary_version": rp.RESISTANCE_VOCABULARY_VERSION,

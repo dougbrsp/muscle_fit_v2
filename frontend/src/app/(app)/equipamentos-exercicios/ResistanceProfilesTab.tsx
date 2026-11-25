@@ -281,16 +281,19 @@ export function ResistanceProfilesTab({
     onError: (e) => setNotice({ color: 'red', text: resistanceErrorMessage(e, 'Não foi possível alterar o estado.') }),
   });
 
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const suggestMut = useMutation({
-    mutationFn: () => suggestProfiles(selected.size > 0 ? [...selected] : null),
+    mutationFn: () => suggestProfiles(selected.size > 0 ? [...selected] : null, (done, total) => setProgress({ done, total })),
     onSuccess: async (r) => {
       setNotice(
         r
           ? {
-              color: r.failed.length > 0 ? 'yellow' : 'green',
+              color: r.failed.length > 0 || r.failed_batches > 0 ? 'yellow' : 'green',
               text: `Sugeridos: ${r.suggested}. Pulados: ${r.skipped}. Falhas: ${r.failed.length}${
                 r.failed.length > 0 ? ` (${r.failed.map((f) => `par ${f.id}: ${f.code}`).join('; ')})` : ''
-              }.`,
+              }.${r.not_processed > 0 ? ` Não processados: ${r.not_processed} (repita o pedido).` : ''}${
+                r.failed_batches > 0 ? ` Lotes com erro: ${r.failed_batches} de ${r.batches}.` : ''
+              }`,
             }
           : { color: 'blue', text: 'Nenhum par pendente para sugerir.' },
       );
@@ -298,7 +301,10 @@ export function ResistanceProfilesTab({
     },
     onError: (e) => setNotice({ color: 'red', text: resistanceErrorMessage(e, 'Falha ao pedir a sugestão por IA.') }),
     // Atualiza a lista também quando o job falha ou expira (parte dos pares pode ter sido gravada).
-    onSettled: () => qc.invalidateQueries({ queryKey: resistanceKeys.all }),
+    onSettled: () => {
+      setProgress(null);
+      return qc.invalidateQueries({ queryKey: resistanceKeys.all });
+    },
   });
 
   const totalForPage = listQ.data?.total;
@@ -408,6 +414,11 @@ export function ResistanceProfilesTab({
             <Button color="brand" loading={suggestMut.isPending} disabled={overLimit} onClick={() => suggestMut.mutate()}>
               {selected.size > 0 ? `Sugerir por IA (${selected.size} selecionados)` : 'Sugerir por IA (pendentes)'}
             </Button>
+          )}
+          {suggestMut.isPending && progress && (
+            <Text size="sm" role="status">
+              Processando lote {Math.min(progress.done + 1, progress.total)} de {progress.total}
+            </Text>
           )}
           {canEdit && selected.size > 0 && (
             <Group gap="xs">
