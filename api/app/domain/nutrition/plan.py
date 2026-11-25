@@ -47,6 +47,7 @@ from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
 from ..cardio_envelope import slots_have_weekdays
 from .carb_cycling import (
     DEFAULT_CARB_CYCLE_POLICY,
+    LIMIT_FAT_COMPENSATION_IGNORED_MANUAL,
     LIMIT_FAT_COMPENSATION_INFEASIBLE,
     LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED,
     CarbCyclePolicy,
@@ -931,12 +932,17 @@ def check_cycle_floors(
     params = settings.plan_params(ffm_age_days)
     erros: list[str] = []
     avisos: list[str] = []
-    compensa = settings.carb_cycle_policy == CarbCyclePolicy.FAT_COMPENSATION
+    compensa = settings.carb_cycle_policy == CarbCyclePolicy.FAT_COMPENSATION and params.manual_macros is None
     for tipo in dict.fromkeys(settings.cycle_kinds):
         indice = settings.cycle_kinds.index(tipo)
         meta = compute_daily_target(
             subject, params, rest_day_context(params.tdee_mode, _CYCLE_CHECK_MONDAY + timedelta(days=indice)), scale_bmr=scale_bmr
         )
+        if (
+            LIMIT_FAT_COMPENSATION_IGNORED_MANUAL in meta.limitations
+            and LIMIT_FAT_COMPENSATION_IGNORED_MANUAL not in avisos
+        ):
+            avisos.append(LIMIT_FAT_COMPENSATION_IGNORED_MANUAL)  # gramas manuais: ciclo varia kcal, gordura fixa
         if compensa:
             inviavel = [c for c in _FAT_COMPENSATION_ERRORS if c in meta.limitations]
             erros.extend(c for c in inviavel if c not in erros)

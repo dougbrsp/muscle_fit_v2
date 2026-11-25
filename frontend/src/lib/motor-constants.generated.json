@@ -799,7 +799,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v7",
+    "engine_version": "nutrition-v8",
     "sexes": [
       "male",
       "female",
@@ -938,6 +938,9 @@
     "default_carb_cycle_policy": "vary_kcal",
     "fat_compensation_carb_limited": "fat_compensation_carb_limited",
     "fat_compensation_cycle_skipped": "fat_compensation_cycle_skipped",
+    "fat_compensation_ignored_manual": "fat_compensation_ignored_manual",
+    "fat_compensation_ignored_manual_label": "Com gramas manuais, a compensação pela gordura não se aplica: o ciclo varia as calorias.",
+    "fat_compensation_policy": "fat_compensation",
     "day_kinds": [
       "high",
       "normal",

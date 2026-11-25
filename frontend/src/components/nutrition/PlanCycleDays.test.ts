@@ -12,8 +12,9 @@ import {
   WEEKDAY_OPTIONS,
 } from '@/lib/nutrition-constants';
 import type { NutritionDayTarget } from '@/lib/nutrition-types';
+import motorConstants from '@/lib/motor-constants.generated.json';
 import { cyclePolicyPayload } from '@/lib/nutrition-cycle-policy';
-import { flatCycleDays, PlanCycleDays } from './PlanCycleDays';
+import { flatCycleDays, PlanCycleDays, withoutDayWarnings } from './PlanCycleDays';
 
 let root: Root | null = null;
 let host: HTMLElement;
@@ -123,6 +124,40 @@ describe('PlanCycleDays', () => {
       'Carbo limitado pelo piso.',
       'Ciclo não aplicado neste dia.',
     ]);
+  });
+
+  it('gramas manuais + compensação: mostra o aviso (rótulo da API se houver); sem manual ou sem compensação, não', async () => {
+    const comp = motorConstants.nutrition.fat_compensation_policy;
+    const render = async (props: object) => {
+      await act(async () => {
+        root?.unmount();
+      });
+      host?.remove();
+      host = document.createElement('div');
+      document.body.appendChild(host);
+      root = createRoot(host);
+      await act(async () => {
+        root!.render(
+          h(QueryClientProvider, { client: new QueryClient() }, h(MantineProvider, { env: 'test' },
+            h(PlanCycleDays, { enabled: true, onEnabledChange: vi.fn(), value: flatCycleDays(DEFAULT_DAY_KIND), onChange: vi.fn(), onPolicyChange: vi.fn(), ...props } as never))),
+        );
+      });
+      return host.querySelector('[data-testid="aviso-manual-compensacao"]')?.textContent ?? null;
+    };
+    expect(await render({ policy: comp, manualOn: true })).toBe(
+      motorConstants.nutrition.fat_compensation_ignored_manual_label,
+    );
+    expect(await render({ policy: comp, manualOn: true, ignoredManualLabel: 'Rótulo da API.' })).toBe('Rótulo da API.');
+    expect(await render({ policy: comp, manualOn: false })).toBeNull();
+    expect(await render({ policy: DEFAULT_CARB_CYCLE_POLICY, manualOn: true })).toBeNull();
+  });
+
+  it('withoutDayWarnings: só remove o aviso que aparece em algum dia exibido', () => {
+    const aviso = { code: 'fat_compensation_carb_limited', label: 'x' };
+    const outro = { code: 'outro', label: 'y' };
+    const dia = (limitations: object[]) => ({ limitations }) as unknown as NutritionDayTarget;
+    expect(withoutDayWarnings([aviso, outro], [dia([aviso])])).toEqual([outro]);
+    expect(withoutDayWarnings([aviso, outro], [dia([])])).toEqual([aviso, outro]);
   });
 
   it('sem prévia não mostra gordura por dia', async () => {

@@ -42,7 +42,7 @@ def _dia(**extra) -> DayContext:
 def test_referencia_manutencao_em_dia_de_descanso():
     meta = compute_daily_target(SUJEITO, _plano(), _dia())
     assert isinstance(meta, DailyTarget) and meta.computable
-    assert meta.engine_version == ENGINE_VERSION == "nutrition-v7"
+    assert meta.engine_version == ENGINE_VERSION == "nutrition-v8"
     assert meta.bmr.kcal == pytest.approx(TMB) and meta.bmr.formula == bm.BmrFormula.MIFFLIN_ST_JEOR
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO)
     assert meta.kcal_target.kcal == pytest.approx(TDEE_DESCANSO)

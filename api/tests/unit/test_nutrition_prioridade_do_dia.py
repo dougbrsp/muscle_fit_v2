@@ -113,16 +113,15 @@ def test_motor_alto_baixo_legado():
 
 
 def test_motor_baixo_com_compensacao_efetiva_prioriza_gordura():
-    plano = _plano(manual_macros=MANUAL, cycle_kinds=SEMANA, carb_cycle_policy=FAT)
+    plano = _plano(cycle_kinds=SEMANA, carb_cycle_policy=FAT)
     assert _prio(plano, 0) == P.CARB and _prio(plano, 1) == P.FAT
 
 
-def test_motor_compensacao_inviavel_cai_no_pre_ciclo_e_vira_normal():
-    plano = _plano(manual_macros=(160.0, 250.0, 10.0), cycle_kinds=SEMANA, carb_cycle_policy=FAT)
-    meta = compute_daily_target(SUJEITO, plano, _dia(0))
-    # Gordura base (10 g) fora da faixa da estratégia: o dia sai sem ciclo e com o código de ciclo não aplicado.
-    assert cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED in meta.limitations
-    assert meta.nutrition_priority == P.NORMAL
+def test_motor_gramas_manuais_com_compensacao_viram_vary_kcal_e_nao_priorizam_gordura():
+    plano = _plano(manual_macros=MANUAL, cycle_kinds=SEMANA, carb_cycle_policy=FAT)
+    meta = compute_daily_target(SUJEITO, plano, _dia(1))
+    assert cc.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL in meta.limitations
+    assert meta.nutrition_priority != P.FAT
 
 
 def test_motor_dia_normal_com_multiplicador_diferente_de_um_e_normal():
@@ -193,7 +192,7 @@ def _comp(meta):
 
 
 def test_day_public_traz_os_tres_campos():
-    meta = compute_daily_target(SUJEITO, _plano(manual_macros=MANUAL, cycle_kinds=SEMANA, carb_cycle_policy=FAT), _dia(1))
+    meta = compute_daily_target(SUJEITO, _plano(cycle_kinds=SEMANA, carb_cycle_policy=FAT), _dia(1))
     dia = svc.day_public(_comp(meta), SEGUNDA)
     assert dia["nutrition_priority"] == "fat"
     assert dia["nutrition_priority_label"] == lb.DAY_PRIORITY_LABELS[P.FAT]
@@ -285,4 +284,4 @@ def test_versao_anterior_na_janela_aberta_e_regravada_com_a_chave_e_congelado_fi
     antigo = linhas[anteontem.isoformat()]
     assert antigo["kcal"] == 1234.0 and antigo["engine_version"] == "nutrition-v5" and antigo["nutrition_priority"] is None
     assert linhas[HOJE.isoformat()]["nutrition_priority"] == "normal"
-    assert ENGINE_VERSION == "nutrition-v7"
+    assert ENGINE_VERSION == "nutrition-v8"

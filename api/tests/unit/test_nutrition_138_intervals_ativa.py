@@ -41,7 +41,7 @@ def test_padroes_derivam_do_dono_e_sao_ativa():
     assert ee.DEFAULT_TDEE_CALORIE_MODE is ae.DEFAULT_REPORTED_CALORIE_MODE
     assert DEFAULT_CALORIE_MODE == ae.CalorieMode.ACTIVE.value
     assert ee.MET_KCAL_CALORIE_MODE == ae.CalorieMode.GROSS
-    assert ENGINE_VERSION == "nutrition-v7"
+    assert ENGINE_VERSION == "nutrition-v8"
 
 
 @pytest.mark.parametrize("valor", [None, "", "  "])

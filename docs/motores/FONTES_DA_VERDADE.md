@@ -329,7 +329,7 @@ Dono do volume: `intelligence/methodology_volume.py` (+ `muscle_volume_class_ran
 
 ### 3.7 Nutrição
 
-Dono: o pacote `domain/nutrition/` (Lote L1, §45), Python puro, com `ENGINE_VERSION = "nutrition-v6"` (v6, #272: só para a janela aberta ser recalculada e ganhar o indicador da prioridade do dia, sem mudar valor de meta; v5: kcal informada do Intervals entra ativa, ADR 0016, §104).
+Dono: o pacote `domain/nutrition/` (Lote L1, §45), Python puro, com `ENGINE_VERSION = "nutrition-v8"` (v8, lote 54 de 25/11/2026, §3.7 "Lote 54"; v7, lote 53; v6, #272: só para a janela aberta ser recalculada e ganhar o indicador da prioridade do dia, sem mudar valor de meta; v5: kcal informada do Intervals entra ativa, ADR 0016, §104).
 Plano: [`docs/nutricao/PLANO_NUTRICAO_2026-10-14.md`](../nutricao/PLANO_NUTRICAO_2026-10-14.md) §3 e §7.
 O orquestrador `daily_target.compute_daily_target` é o único ponto que a api-core chama para
 materializar a meta do dia (E2). Os demais consumidores (L2+) chamam o dono de cada linha.
@@ -2688,7 +2688,7 @@ do modo de contagem do volume, §39, já aplicada em produção; o runner recusa
 Plano: [`docs/nutricao/PLANO_NUTRICAO_2026-10-14.md`](../nutricao/PLANO_NUTRICAO_2026-10-14.md) §3, §7 e §14.
 Tabela regra → dono: §3.7.
 
-**Motor — `api/app/domain/nutrition/`** (16 módulos, `ENGINE_VERSION = "nutrition-v6"` desde 22/11/2026, #272, só para regravar a janela aberta com o indicador da prioridade do dia; foi `nutrition-v5` desde 17/11/2026, ADR 0016, e `nutrition-v4` na escrita desta seção). Python puro, sem
+**Motor — `api/app/domain/nutrition/`** (16 módulos, `ENGINE_VERSION = "nutrition-v8"` desde 25/11/2026 (lote 54; v7 no lote 53; v6 desde 22/11/2026, #272, só para regravar a janela aberta com o indicador da prioridade do dia; foi `nutrition-v5` desde 17/11/2026, ADR 0016, e `nutrition-v4` na escrita desta seção). Python puro, sem
 I/O nem relógio, constantes `Final`, dataclasses `frozen=True` com `to_dict()`, `None` + código em
 `limitations` quando não dá para calcular. Nenhum consumidor em runtime neste lote: as rotas, a
 materialização (`compute_daily_target`, E2), as telas e os prompts chegam do L2 em diante.
@@ -7969,6 +7969,19 @@ Não medido:
 - Consumidores: `carb_cycling` lê `strategy.fat_share_range_for` (faixa) e `manual_targets.RANGE_EDGE_TOLERANCE` (borda); `daily_target` repassa a faixa. `ENGINE_VERSION` = `nutrition-v7`.
 
 Impacto em produção: 1 plano vigente, na política `vary_kcal`; 0 planos com compensação pela gordura (informado pelo usuário em 25/11/2026). `nutrition-v7` regrava as metas não congeladas de hoje em diante (no plano vigente, com os mesmos valores); dias passados e congelados não mudam; hashes-ouro de `test_nutrition_modos_legados_ouro.py` regravados com nota. Planos com ciclo e compensação podem passar a ter dias com o ciclo não aplicado.
+
+**Lote 54 de 25/11/2026 (#313: gramas manuais, piso da manutenção, prévia; branch `fix/nutricao-manual-adaptativo-l54`, sem commit).** Decisões do usuário de 25/11/2026 depois da segunda simulação do rascunho (972 `auto_intervals`, 2.592 `adaptive_balance`, 288 fases e 144 manuais): 64 anomalias, agora 0. Mudanças:
+
+- Dono do ciclo (`api/app/domain/nutrition/carb_cycling.py`): `LIMIT_FAT_COMPENSATION_IGNORED_MANUAL` (`fat_compensation_ignored_manual`), rótulo em `labels.py`, código exportado no bloco `nutrition` do espelho. Com gramas manuais, `daily_target.compute_daily_target` pede `vary_kcal` ao ciclo (a gordura fica nos gramas fixos; o carbo e as kcal variam) e a política efetiva gravada em `DailyTarget.carb_cycle_policy` é `vary_kcal`.
+- Validação (`plan.check_cycle_floors`): o aviso `fat_compensation_ignored_manual` entra em `avisos`, uma vez por plano. Não bloqueia e não gera `cycle_fat_share_*`.
+- Dono da estratégia (`api/app/domain/nutrition/strategy.py`): `kcal_target` aplica o piso `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB também na manutenção com ajuste ≥ 0 (`_maintenance_with_cut`, que já cobria o ajuste negativo), sem limitar pelo gasto estimado. Código `CLAMP_MIN_INTAKE_BMR_MULTIPLE` (`min_intake_bmr_multiple`) em `clamped_by`. Muda só quando o gasto fica abaixo da TMB (caso do adaptativo: 120 kg com gasto de 1.200 kcal, que dava carbo 0). Fases de manutenção, diet break e refeed dentro de um plano de cutting também usam a função de manutenção (`phases.MAINTENANCE_KCAL_PHASES` e `params.as_maintenance()`, em `daily_target.py`), e só mudam com o piso novo se o gasto estimado ficar abaixo da TMB.
+- Versão: `daily_target.ENGINE_VERSION` = `nutrition-v8`. Hashes-ouro de `test_nutrition_modos_legados_ouro.py` regravados, com nota.
+- Prévia: `api/app/nutrition_plans.py` não muda. O código `fat_compensation_ignored_manual` aparece em `warnings` da prévia (valor novo em campo existente, aditivo). Os avisos de dias fora de `publish_days` voltam à lista geral só pelo frontend: `withoutDayWarnings` (`PlanCycleDays.tsx`) tira da lista só o aviso que aparece em algum dia exibido (`PlanPreview.tsx`, `PlanForm.tsx`).
+- Tela (`frontend/src/components/nutrition/PlanCycleDays.tsx`, usado por `PlanForm.tsx`): mostra o aviso sob o seletor de política quando gramas manuais e `nutrition.fat_compensation_policy` do espelho (valor `fat_compensation`, de `CarbCyclePolicy.FAT_COMPENSATION`) estão juntos. O texto vem de `nutrition.fat_compensation_ignored_manual_label` (`labels.py`, exportado por `nutrition/__init__.py`). Sem cálculo e sem cópia local do texto. Dono das duas chaves do espelho: `carb_cycling.py` e `labels.py`.
+
+Impacto em produção (informado pelo usuário em 25/11/2026): 1 plano vigente, cutting com "variar as calorias" e sem gramas manuais, portanto valores inalterados; `nutrition-v8` regrava as metas não congeladas com os mesmos valores; dias congelados não mudam. Fases de manutenção, diet break e refeed em plano de cutting: só mudam se o gasto estimado ficar abaixo da TMB; não medido.
+
+Verificação: documental nesta entrega; a execução das suítes citadas no ADR 0029 não foi conferida aqui.
 
 **Lote 36 de 23/11/2026 (#280 e #284, sobras de revisão).** Sem migração. Mudanças:
 
