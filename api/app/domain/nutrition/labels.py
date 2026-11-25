@@ -759,6 +759,11 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "A compensação com gordura não fecha neste plano: a gordura do dia alto ficaria abaixo do mínimo ou a do "
         "dia baixo acima do máximo. Reduza a oscilação do ciclo ou ajuste a gordura base."
     ),
+    cc_mod.LIMIT_FAT_COMPENSATION_CARB_LIMITED: (
+        "A compensação com gordura limitou a oscilação do carboidrato neste dia para a gordura ficar dentro da faixa "
+        "recomendada da estratégia. A energia e a proteína do dia não mudam."
+    ),
+    cc_mod.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED: "gordura base fora da faixa da estratégia: ciclo não aplicado neste dia",
     cc_mod.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED: (
         "A meta base não fecha em calorias, proteína, carboidrato e gordura; a compensação com gordura não pode ser aplicada."
     ),
@@ -1114,6 +1119,32 @@ NOTICE_LABELS: Final[Mapping[str, str]] = {
 }
 
 # Códigos com campo (`<prefixo>:<campo>`): o texto recebe o rótulo do campo.
+_CYCLE_DAY_WORDS: Final[Mapping[str, str]] = {
+    DayKind.HIGH.value: "alto",
+    DayKind.NORMAL.value: "normal",
+    DayKind.LOW.value: "baixo",
+}
+
+# Gordura de um dia do ciclo com compensação (`plan.check_cycle_floors`): `{day}` = alto/normal/baixo, `{percent}` = % das kcal.
+CYCLE_FAT_LABELS: Final[Mapping[str, str]] = {
+    plan_mod.ERR_CYCLE_FAT_BELOW_MIN: (
+        "Ciclo de carboidrato: no dia {day} a gordura ficaria em {percent}% das kcal "
+        f"(mínimo seguro {_percent(manual_mod.FAT_BLOCK_MIN_KCAL_SHARE)}). Não pode ser salvo."
+    ),
+    plan_mod.ERR_CYCLE_FAT_ABOVE_MAX: (
+        "Ciclo de carboidrato: no dia {day} a gordura ficaria em {percent}% das kcal "
+        f"(máximo aceito {_percent(manual_mod.FAT_BLOCK_MAX_KCAL_SHARE)}). Não pode ser salvo."
+    ),
+    plan_mod.WARN_CYCLE_FAT_BELOW_RANGE: (
+        "Ciclo de carboidrato: no dia {day} a gordura fica em {percent}% das kcal, abaixo da faixa recomendada. "
+        "Salva, mas confira."
+    ),
+    plan_mod.WARN_CYCLE_FAT_ABOVE_RANGE: (
+        "Ciclo de carboidrato: no dia {day} a gordura fica em {percent}% das kcal, acima da faixa recomendada. "
+        "Salva, mas confira."
+    ),
+}
+
 PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     recipe_mod.ERR_INVALID_INGREDIENT_AMOUNT: "Ingrediente {field}: quantidade inválida.",
     recipe_mod.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE: (
@@ -1265,6 +1296,11 @@ def limitation_label(code: str) -> str:
     if code in LIMITATION_LABELS:
         return LIMITATION_LABELS[code]
     prefixo, _, campo = code.partition(":")
+    if prefixo in CYCLE_FAT_LABELS:  # `<código>:<tipo do dia>:<percentual>`
+        tipo, _, percentual = campo.partition(":")
+        if tipo in _CYCLE_DAY_WORDS and percentual.isdigit():
+            return CYCLE_FAT_LABELS[prefixo].format(day=_CYCLE_DAY_WORDS[tipo], percent=percentual)
+        return code
     modelo = PREFIXED_LIMITATION_LABELS.get(prefixo)
     if modelo is None or not campo:
         return code

@@ -182,3 +182,76 @@ def test_to_dict_serializavel():
     dados = json.loads(json.dumps(semana.to_dict()))
     assert dados["kinds"] == ["high", "low", "high", "low", "high", "low", "low"]
     assert set(dados["multipliers"]["by_kind"]) == {"high", "normal", "low"}
+
+
+# --- FAT_COMPENSATION com a gordura na faixa da estratégia (lote 53) ---------------------------------------------
+
+
+@pytest.mark.parametrize("estrategia", [st.Strategy.CUTTING, st.Strategy.MAINTENANCE, st.Strategy.BULKING])
+@pytest.mark.parametrize("delta", [-300.0, -60.0, 60.0, 300.0])
+def test_compensacao_mantem_a_gordura_na_faixa_e_a_energia(estrategia, delta):
+    faixa = st.fat_share_range_for(estrategia)
+    alvo = _alvo_com_carbo(300.0)  # gordura 70 g = ~25% das kcal
+    dia, lim = cc._day_with_fat_compensation(alvo, delta, faixa)
+    fracao = dia.fat_g * mc.KCAL_PER_G_FAT / dia.kcal
+    assert faixa[0] <= fracao <= faixa[1]
+    assert dia.kcal == pytest.approx(alvo.kcal) and dia.protein_g == alvo.protein_g
+    assert abs(dia.carb_g - alvo.carb_g) <= abs(delta) + 1e-9
+    assert (cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED in lim) == (abs(dia.carb_g - alvo.carb_g) < abs(delta) - 1e-9)
+
+
+def test_compensacao_limita_o_dia_alto_e_avisa():
+    alvo = _alvo_com_carbo(300.0)
+    dia, lim = cc._day_with_fat_compensation(alvo, 300.0, st.fat_share_range_for(st.Strategy.MAINTENANCE))
+    assert lim == (cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED,)
+    assert 0 < dia.carb_g - alvo.carb_g < 300.0
+    assert dia.fat_g * mc.KCAL_PER_G_FAT / dia.kcal == pytest.approx(0.20, abs=1e-6)
+
+
+def test_compensacao_sem_faixa_ou_dentro_da_faixa_nao_muda():
+    alvo = _alvo_com_carbo(300.0)
+    assert cc._day_with_fat_compensation(alvo, 20.0) == cc._day_with_fat_compensation(
+        alvo, 20.0, st.fat_share_range_for(st.Strategy.MAINTENANCE)
+    )
+    assert cc._day_with_fat_compensation(alvo, 20.0)[1] == ()
+
+
+def test_compensacao_alvo_ja_fora_da_faixa_fica_com_delta_zero_e_o_codigo():
+    alvo = _alvo_com_carbo(300.0)  # ~25% de gordura; faixa do cutting 15-30 cabe, então use uma faixa que não cabe
+    dia, lim = cc._day_with_fat_compensation(alvo, 50.0, (0.40, 0.50))
+    assert dia == alvo and lim == (cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED,)
+
+
+def test_clamp_na_borda_da_tolerancia_nunca_troca_o_sinal_do_delta():
+    energia, faixa = 2500.0, (0.20, 0.30)
+    teto_g = faixa[1] * energia / mc.KCAL_PER_G_FAT
+    gordura_na_borda = teto_g + 0.5 * 1e-9 * energia / mc.KCAL_PER_G_FAT  # dentro da tolerância, acima do teto
+    assert cc._clamp_delta_to_fat_range(energia, gordura_na_borda, 50.0, faixa) >= 0.0
+    assert cc._clamp_delta_to_fat_range(energia, gordura_na_borda, -50.0, faixa) == 0.0
+    piso_g = faixa[0] * energia / mc.KCAL_PER_G_FAT
+    assert cc._clamp_delta_to_fat_range(energia, piso_g - 1e-12, -50.0, faixa) <= 0.0
+    # Diferença de ponto flutuante não vira aviso de limitação.
+    _, lim = cc._day_with_fat_compensation(_alvo_com_carbo(300.0), 20.0, faixa)
+    assert lim == ()
+
+
+def test_apply_cycle_over_base_repassa_a_faixa_so_na_compensacao():
+    alvo = _alvo_com_carbo(300.0)
+    faixa = st.fat_share_range_for(st.Strategy.MAINTENANCE)
+    com, lim = cc.apply_cycle_over_base(
+        alvo, alvo, H, (H, L, H, L, H, L, L), PESO, policy=cc.CarbCyclePolicy.FAT_COMPENSATION, fat_share_range=faixa
+    )
+    sem, _ = cc.apply_cycle_over_base(alvo, alvo, H, (H, L, H, L, H, L, L), PESO, policy=cc.CarbCyclePolicy.FAT_COMPENSATION)
+    assert com.fat_g > sem.fat_g
+    # VARY_KCAL ignora a faixa.
+    a, _ = cc.apply_cycle_over_base(alvo, alvo, H, (H, L, H, L, H, L, L), PESO, fat_share_range=faixa)
+    b, _ = cc.apply_cycle_over_base(alvo, alvo, H, (H, L, H, L, H, L, L), PESO)
+    assert a == b
+
+
+def test_codigos_de_compensacao_vao_no_espelho_do_frontend():
+    from app.domain import nutrition
+
+    bloco = nutrition.export_for_frontend()
+    assert bloco["fat_compensation_carb_limited"] == cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED
+    assert bloco["fat_compensation_cycle_skipped"] == cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED

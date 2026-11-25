@@ -42,6 +42,7 @@ from typing import Any, Final, Mapping, Optional, Sequence
 
 from .anthropometrics import positive_number
 from .energy_density import DAYS_PER_WEEK
+from .manual_targets import RANGE_EDGE_TOLERANCE
 from .macros import (
     ATWATER_CLOSE_REL_TOL,
     KCAL_PER_G_CARB,
@@ -67,6 +68,10 @@ LIMIT_CARB_FLOOR_PREVENTS_CYCLE = "carb_floor_prevents_cycle"
 LIMIT_TARGET_NOT_COMPUTABLE = "target_not_computable"
 LIMIT_FAT_COMPENSATION_INFEASIBLE = "fat_compensation_infeasible"
 LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED = "fat_compensation_target_not_closed"
+LIMIT_FAT_COMPENSATION_CARB_LIMITED = "fat_compensation_carb_limited"
+LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED = "fat_compensation_cycle_skipped"  # gordura base já fora da faixa: delta 0
+# Diferença (g de carbo) abaixo da qual o delta limitado conta como igual ao pedido (sem aviso de limitação).
+CARB_LIMIT_SIGNIFICANT_G = 1e-6
 ERR_INVALID_DAY_MAP = "invalid_day_map"
 ERR_INVALID_WEEKDAY = "invalid_weekday"  # `invalid_weekday:<chave>`
 ERR_DUPLICATE_WEEKDAY = "duplicate_weekday"  # `duplicate_weekday:<dia>`
@@ -411,11 +416,13 @@ def apply_cycle_over_base(
     weight_kg: Any = None,
     keep_fat_share: bool = False,
     policy: CarbCyclePolicy = DEFAULT_CARB_CYCLE_POLICY,
+    fat_share_range: Optional[tuple[float, float]] = None,
 ) -> tuple[MacroTargets, tuple[str, ...]]:
     """Meta de UM dia do tipo `kind` quando o ciclo é aplicado dia a dia (a materialização).
 
     `policy=FAT_COMPENSATION` (opcional, #242): mesmo delta de carbo, mas a energia e a proteína do `target` ficam e a
-    gordura compensa (`_day_with_fat_compensation`); `keep_fat_share` não vale nesse modo. Padrão = comportamento acima.
+    gordura compensa (`_day_with_fat_compensation`); `keep_fat_share` não vale nesse modo. `fat_share_range` (só nesse
+    modo) limita o delta de carbo para a gordura do dia ficar na faixa. Padrão = comportamento acima.
 
     `target` é a meta do dia sem ciclo (com o treino do dia, se o gasto é explícito) e `base`
     é a meta do mesmo dia SEM o treino (a base do plano, igual em todos os dias da semana
@@ -443,7 +450,7 @@ def apply_cycle_over_base(
     mult = week_multipliers(tuple(kinds), base.carb_g, weight_kg)
     delta_carbo = float(base.carb_g) * (mult.by_kind[kind] - 1.0)  # type: ignore[arg-type]
     if policy == CarbCyclePolicy.FAT_COMPENSATION:
-        dia, lim_comp = _day_with_fat_compensation(target, delta_carbo)
+        dia, lim_comp = _day_with_fat_compensation(target, delta_carbo, fat_share_range)
         return dia, mult.limitations + lim_comp
     if keep_fat_share:
         dia, cortou = _day_with_fat_share(target, delta_carbo)
@@ -454,13 +461,43 @@ def apply_cycle_over_base(
     return replace(target, carb_g=carbo, kcal=kcal, fiber_g=fiber_target_g(kcal)), mult.limitations
 
 
-def _day_with_fat_compensation(target: MacroTargets, delta_carb_g: float) -> tuple[MacroTargets, tuple[str, ...]]:
+def _fat_base_outside_range(energia: float, gordura_base: float, fat_share_range: tuple[float, float]) -> bool:
+    """Gordura do alvo pré-ciclo fora da faixa de fração (com a tolerância de borda do validador)."""
+    folga = RANGE_EDGE_TOLERANCE * energia / KCAL_PER_G_FAT
+    piso = fat_share_range[0] * energia / KCAL_PER_G_FAT
+    teto = fat_share_range[1] * energia / KCAL_PER_G_FAT
+    return not piso - folga <= gordura_base <= teto + folga
+
+
+def _clamp_delta_to_fat_range(
+    energia: float, gordura_base: float, delta_carb_g: float, fat_share_range: tuple[float, float]
+) -> float:
+    """Delta de carbo (em módulo, nunca maior que o pedido) que mantém a gordura do dia na faixa de fração das kcal.
+
+    gordura(delta) = gordura_base − delta × 4 ÷ 9. Se a gordura do alvo pré-ciclo já está fora da faixa, o delta
+    é zero (não piora). A borda tem a tolerância de ponto flutuante `RANGE_EDGE_TOLERANCE` (a mesma do validador);
+    nela a janela [delta_min, delta_max] sempre contém o zero (o delta nunca troca de sinal)."""
+    if _fat_base_outside_range(energia, gordura_base, fat_share_range):
+        return 0.0
+    piso = fat_share_range[0] * energia / KCAL_PER_G_FAT
+    teto = fat_share_range[1] * energia / KCAL_PER_G_FAT
+    delta_min = min(0.0, (gordura_base - teto) * KCAL_PER_G_FAT / KCAL_PER_G_CARB)
+    delta_max = max(0.0, (gordura_base - piso) * KCAL_PER_G_FAT / KCAL_PER_G_CARB)
+    return min(max(delta_carb_g, delta_min), delta_max)
+
+
+def _day_with_fat_compensation(
+    target: MacroTargets, delta_carb_g: float, fat_share_range: Optional[tuple[float, float]] = None
+) -> tuple[MacroTargets, tuple[str, ...]]:
     """Meta do dia com o carbo deslocado por `delta_carb_g` e a gordura compensando a energia.
 
     Energia de referência = Atwater do `target` (pré-ciclo); proteína fica; carbo = carbo do `target` + delta;
     gordura = (energia − proteína × 4 − carbo × 4) ÷ 9; kcal final recalculada por Atwater. Sem arredondamento
-    (como os outros modos). Inviável (devolve o `target` sem ciclo + código, nunca recorta): macro nulo, alvo que não
-    fecha por Atwater, carbo ou gordura finais negativos."""
+    (como os outros modos). Inviável (devolve o `target` sem ciclo + código): macro nulo, alvo que não
+    fecha por Atwater, carbo ou gordura finais negativos.
+
+    `fat_share_range` (faixa de fração de gordura da estratégia): o delta é reduzido até a gordura caber na faixa e o
+    dia sai com `LIMIT_FAT_COMPENSATION_CARB_LIMITED`; alvo pré-ciclo fora da faixa = delta zero + o código."""
     energia = kcal_from_macros(target.protein_g, target.carb_g, target.fat_g)
     if (
         not target.computable
@@ -472,12 +509,21 @@ def _day_with_fat_compensation(target: MacroTargets, delta_carb_g: float) -> tup
     if not delta_carb_g:
         return target, ()
     proteina = float(target.protein_g)  # type: ignore[arg-type]
+    limitacoes: tuple[str, ...] = ()
+    if fat_share_range is not None:
+        limitado = _clamp_delta_to_fat_range(energia, float(target.fat_g), delta_carb_g, fat_share_range)  # type: ignore[arg-type]
+        if abs(limitado - delta_carb_g) > CARB_LIMIT_SIGNIFICANT_G:
+            if limitado == 0.0 and _fat_base_outside_range(energia, float(target.fat_g), fat_share_range):  # type: ignore[arg-type]
+                return target, (LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED,)
+            delta_carb_g, limitacoes = limitado, (LIMIT_FAT_COMPENSATION_CARB_LIMITED,)
+            if not delta_carb_g:
+                return target, limitacoes
     carbo = float(target.carb_g) + delta_carb_g  # type: ignore[arg-type]
     gordura = (energia - proteina * KCAL_PER_G_PROTEIN - carbo * KCAL_PER_G_CARB) / KCAL_PER_G_FAT
     if carbo < 0 or gordura < 0:
         return target, (LIMIT_FAT_COMPENSATION_INFEASIBLE,)
     kcal = kcal_from_macros(proteina, carbo, gordura)
-    return replace(target, carb_g=carbo, fat_g=gordura, kcal=kcal, fiber_g=fiber_target_g(kcal)), ()
+    return replace(target, carb_g=carbo, fat_g=gordura, kcal=kcal, fiber_g=fiber_target_g(kcal)), limitacoes
 
 
 def _day_with_fat_share(target: MacroTargets, delta_carb_g: float) -> tuple[MacroTargets, bool]:

@@ -24,7 +24,7 @@ from enum import Enum
 from typing import Any, Final, Optional
 
 from .anthropometrics import non_negative_number, positive_number
-from .macros import KCAL_PER_G_FAT, MIN_CARB_G_PER_KG, Macros, kcal_from_macros
+from .macros import KCAL_PER_G_CARB, KCAL_PER_G_FAT, KCAL_PER_G_PROTEIN, MIN_CARB_G_PER_KG, Macros, kcal_from_macros
 from .strategy import (
     CUT_MIN_INTAKE_BMR_MULTIPLE,
     ProteinBasis,
@@ -75,6 +75,9 @@ KCAL_BLOCK_MAX: Final[float] = 8000.0
 # Aviso (default de desenho): kcal das gramas manuais mais de 10% distante da meta
 # calórica da estratégia, o que muda o déficit ou o superávit que o plano promete.
 KCAL_TARGET_DEVIATION_WARN_SHARE: Final[float] = 0.10
+
+# Tolerância (ponto flutuante) na borda das faixas de aviso: um valor exatamente na borda não vira aviso por 1e-16.
+RANGE_EDGE_TOLERANCE: Final[float] = 1e-9
 
 FIELD_PROTEIN = "protein_g"
 FIELD_CARB = "carb_g"
@@ -196,12 +199,25 @@ def _grade(
             field, value, RangeStatus.BLOCKED, metric, metric_value, warn, (f"{MANUAL_BLOCKED_ABOVE}:{field}",), base
         )
     codes = list(extra_codes)
-    if warn is not None and metric_value < warn[0]:
+    if warn is not None and metric_value < warn[0] - RANGE_EDGE_TOLERANCE:
         codes.append(f"{MANUAL_BELOW_RANGE}:{field}")
-    elif warn is not None and metric_value > warn[1]:
+    elif warn is not None and metric_value > warn[1] + RANGE_EDGE_TOLERANCE:
         codes.append(f"{MANUAL_ABOVE_RANGE}:{field}")
     status = RangeStatus.WARNING if codes else RangeStatus.WITHIN_RANGE
     return FieldCheck(field, value, status, metric, metric_value, warn, tuple(codes), base)
+
+
+def macro_kcal_shares(protein_g: Any, carb_g: Any, fat_g: Any) -> Optional[dict[str, float]]:
+    """Fração das kcal (Atwater das próprias gramas) de cada macro: `{protein, carb, fat}`, somando 1. `None` se as
+    gramas são inválidas ou a energia é zero. Dono único dessa conta (a tela e a prévia só exibem)."""
+    kcal = kcal_from_macros(protein_g, carb_g, fat_g)
+    if not kcal:
+        return None
+    return {
+        "protein": float(protein_g) * KCAL_PER_G_PROTEIN / kcal,
+        "carb": float(carb_g) * KCAL_PER_G_CARB / kcal,
+        "fat": float(fat_g) * KCAL_PER_G_FAT / kcal,
+    }
 
 
 def _valid_grams(value: Any) -> Optional[float]:

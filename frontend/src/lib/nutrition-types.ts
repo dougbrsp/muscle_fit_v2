@@ -159,8 +159,13 @@ export type NutritionSubject = {
   limitations: string[];
 };
 
+/** Fração (0-1) das kcal de cada macro, pelo motor (`manual_targets.macro_kcal_shares`). */
+export type NutritionMacroKcalShares = { protein: number; carb: number; fat: number };
+
 /** Meta de um dia — calculada (preview) ou materializada (`nutrition_daily_targets`). */
 export type NutritionDayTarget = {
+  /** Só na prévia do plano; `null` sem energia. */
+  macro_kcal_shares?: NutritionMacroKcalShares | null;
   local_date: string;
   plan_id: number | null;
   day_kind: NutritionCode;

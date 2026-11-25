@@ -32,6 +32,7 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O, sem relógio.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from enum import Enum
@@ -62,6 +63,11 @@ from .manual_targets import (
     DEFAULT_MANUAL_TRAINING_MODE,
     KCAL_BLOCK_MAX,
     KCAL_BLOCK_MIN,
+    FIELD_FAT,
+    MANUAL_ABOVE_RANGE,
+    MANUAL_BELOW_RANGE,
+    MANUAL_BLOCKED_ABOVE,
+    MANUAL_BLOCKED_BELOW,
     ManualTargetsCheck,
     ManualTrainingMode,
     RangeStatus,
@@ -122,6 +128,18 @@ ERR_CYCLE_KCAL_BELOW_MIN = "cycle_kcal_below_minimum"  # bloqueia: abaixo de `ma
 ERR_CYCLE_KCAL_ABOVE_MAX = "cycle_kcal_above_maximum"  # bloqueia: acima de `manual_targets.KCAL_BLOCK_MAX`
 WARN_CYCLE_KCAL_BELOW_BMR = "cycle_kcal_below_bmr"  # avisa, como na D6
 WARN_CYCLE_PARTIAL_WEEK = "cycle_partial_week"  # publicação fora da segunda: sem compensação
+# Gordura de um dia do ciclo com compensação (código `<código>:<tipo do dia>:<percentual inteiro das kcal>`): o piso e o
+# teto de bloqueio são os de `manual_targets`; a faixa recomendada é a da estratégia.
+ERR_CYCLE_FAT_BELOW_MIN = "cycle_fat_share_below_minimum"
+ERR_CYCLE_FAT_ABOVE_MAX = "cycle_fat_share_above_maximum"
+WARN_CYCLE_FAT_BELOW_RANGE = "cycle_fat_share_below_range"
+WARN_CYCLE_FAT_ABOVE_RANGE = "cycle_fat_share_above_range"
+_CYCLE_FAT_CODES: Final[Mapping[str, str]] = {
+    MANUAL_BLOCKED_BELOW: ERR_CYCLE_FAT_BELOW_MIN,
+    MANUAL_BLOCKED_ABOVE: ERR_CYCLE_FAT_ABOVE_MAX,
+    MANUAL_BELOW_RANGE: WARN_CYCLE_FAT_BELOW_RANGE,
+    MANUAL_ABOVE_RANGE: WARN_CYCLE_FAT_ABOVE_RANGE,
+}
 # Projeção com gramas manuais.
 REASON_MANUAL_AGAINST_STRATEGY = "projection_manual_against_strategy"
 REASON_MANUAL_MISSING_TDEE = "projection_manual_missing_tdee"
@@ -930,7 +948,15 @@ def check_cycle_floors(
                 )
                 for campo in checagem.fields:
                     destino = erros if campo.status == RangeStatus.BLOCKED else avisos
-                    destino.extend(c for c in campo.codes if c not in destino)
+                    for codigo in campo.codes:
+                        prefixo, _, _ = codigo.partition(":")
+                        if campo.field == FIELD_FAT and prefixo in _CYCLE_FAT_CODES and campo.metric_value is not None:
+                            # Gordura do ciclo: código próprio com o tipo do dia e a fração (o do manual não os cita).
+                            # Percentual inteiro que nunca esconde o desvio: piso quando abaixo, teto quando acima.
+                            arredonda = math.floor if "below" in _CYCLE_FAT_CODES[prefixo] else math.ceil
+                            codigo = f"{_CYCLE_FAT_CODES[prefixo]}:{tipo.value}:{arredonda(campo.metric_value * 100)}"
+                        if codigo not in destino:
+                            destino.append(codigo)
         kcal = meta.macros.kcal
         if kcal is None:
             continue

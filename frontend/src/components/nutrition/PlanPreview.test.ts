@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NutritionTargetDetail } from '@/lib/nutrition-types';
 import { planPreviewQuery } from '@/lib/nutrition-api';
-import { TodayTargetCard } from './PlanPreview';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PlanPreview, TodayTargetCard } from './PlanPreview';
 
 // Composição do gasto no card "Meta de hoje": a tela só exibe as parcelas prontas do motor.
 
@@ -24,6 +25,11 @@ beforeAll(() => {
     removeEventListener() {},
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver ||= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
 });
 
 beforeEach(() => {
@@ -194,6 +200,37 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
     expect(texto).toMatch(/Gordura\s*95 g/);
     expect(texto).toMatch(/Carboidrato\s*120 g/);
     expect(texto).toMatch(/Alvo calórico\s*2\.400 kcal/);
+  });
+
+  it('prévia: gordura em g e %, aviso de carbo limitado e erros/avisos do ciclo com o rótulo da API', async () => {
+    const plano = { id: 9, user_id: 1, updated_at: 't', state: 'current' } as never;
+    const dia = (limitations: object[]) => ({
+      local_date: '2026-11-23', fat_g: 90, kcal: 2000, limitations, macro_kcal_shares: { protein: 0.3, carb: 0.4, fat: 0.3 },
+    });
+    const previa = {
+      plan: plano, today: '2026-11-23', publish_days: [], limitations: [], blocking: [], can_publish: true, manual_check: null,
+      subject: {}, goal: {}, projection: { status: 'x', reason_items: [] },
+      target: alvo({}),
+      warnings: [{ code: 'fat_compensation_carb_limited', label: 'Aviso pronto: carbo limitado.' }],
+      week: [dia([{ code: 'fat_compensation_carb_limited', label: 'Carbo do dia limitado.' }])],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(planPreviewQuery(plano).queryKey, previa);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlanId: 9, onPublished: () => {} })),
+        ),
+      );
+    });
+    expect(host.querySelector('[data-testid="gordura-por-dia"] [data-testid="dia-gordura"]')?.textContent).toBe('Gordura 90 g (30% das kcal)');
+    expect(host.querySelector('[data-testid="dia-aviso-ciclo"]')?.textContent).toBe('Carbo do dia limitado.');
+    // Sem duplicar: o aviso por dia fica só no resumo do dia, não na lista global.
+    expect(host.textContent).not.toContain('Aviso pronto: carbo limitado.');
+    expect(host.textContent).toContain('Carbo do dia limitado.');
   });
 
   it('o card Plano e a prévia compartilham a mesma queryKey (um só POST)', () => {
