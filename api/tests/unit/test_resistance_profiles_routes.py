@@ -49,7 +49,7 @@ def test_vocabulario_e_o_export_do_dono(db):
     assert r.json()["default_status"] == dono.ADMIN_DEFAULT_STATUS
     j = r.json()
     assert j["actions"] == {"approve": dono.APPROVE_STATUS, "reject": dono.REJECT_STATUS}
-    assert j["suggest_max_pairs"] == dono.SUGGEST_MAX_PAIRS and j["pending_statuses"] == ["suggested"]
+    assert j["suggest_max_pairs"] == 30 and j["suggest_pairs_per_job"] == 6 and j["pending_statuses"] == ["suggested"]
     assert "human_review_statuses" in j
 
 
@@ -250,7 +250,8 @@ def despacho(monkeypatch):
 
 def test_suggest_com_ids_cria_job_para_a_lambda_de_ia(db, despacho):
     r = _client().post("/resistance-profiles/suggest", json={"equipment_exercise_ids": [100, 101, 100]})
-    assert r.status_code == 202 and r.json() == {"job_id": "job-1", "pairs": 2}
+    assert r.status_code == 202
+    assert r.json() == {"job_ids": ["job-1"], "job_id": "job-1", "pairs": 2, "failed_batches": 0}
     assert despacho["jobs"] == [(dono.SUGGEST_JOB_TYPE, {"payload": {"equipment_exercise_ids": [100, 101]}, "user_id": ADMIN}, ADMIN)]
     env, evento = despacho["invokes"][0]
     assert env == "WORKOUT_AI_FUNCTION_NAME"
@@ -274,13 +275,48 @@ def test_suggest_sem_pendentes_nao_cria_job(db, despacho):
     for pid in (100, 101, 102):
         db.add_profile(pid, status="verified", origin="admin")
     r = _client().post("/resistance-profiles/suggest", json={})
-    assert r.status_code == 202 and r.json() == {"job_id": None, "pairs": 0}
+    assert r.status_code == 202 and r.json() == {"job_ids": [], "job_id": None, "pairs": 0, "failed_batches": 0}
     assert not despacho["jobs"] and not despacho["invokes"]
 
 
+def test_suggest_30_ids_viram_5_jobs_de_6(db, despacho):
+    ids = list(range(1, dono.SUGGEST_MAX_PAIRS_PER_REQUEST + 1))
+    r = _client().post("/resistance-profiles/suggest", json={"equipment_exercise_ids": ids})
+    assert r.status_code == 202 and r.json()["pairs"] == 30 and r.json()["failed_batches"] == 0
+    blocos = [ev["payload"]["equipment_exercise_ids"] for _, ev in despacho["invokes"]]
+    assert blocos == [ids[i:i + 6] for i in range(0, 30, 6)] and len(despacho["jobs"]) == 5
+
+
+def test_suggest_sem_ids_divide_os_pendentes_em_blocos(db, despacho, monkeypatch):
+    monkeypatch.setattr(dono, "SUGGEST_PAIRS_PER_JOB", 2)
+    r = _client().post("/resistance-profiles/suggest", json={"limit": 3})
+    assert r.status_code == 202 and r.json()["pairs"] == 3
+    blocos = [ev["payload"]["equipment_exercise_ids"] for _, ev in despacho["invokes"]]
+    assert [len(b) for b in blocos] == [2, 1]
+
+
+def test_suggest_falha_parcial_de_despacho_segue(db, monkeypatch):
+    seq = iter(range(100))
+    monkeypatch.setattr(mod.async_jobs, "create_job", lambda *a, **k: f"job-{next(seq)}")
+    chamadas = []
+
+    def _invoke(env, payload):
+        chamadas.append(payload["job_id"])
+        if len(chamadas) == 1:
+            raise RuntimeError("lambda fora")
+
+    monkeypatch.setattr(mod.async_jobs, "invoke_async", _invoke)
+    falhos = []
+    monkeypatch.setattr(mod.async_jobs, "mark_failed", lambda job_id, code: falhos.append((job_id, code)))
+    r = _client().post("/resistance-profiles/suggest", json={"equipment_exercise_ids": list(range(1, 14))})
+    assert falhos == [("job-0", "dispatch_failed")]
+    assert r.status_code == 202
+    assert r.json() == {"job_ids": ["job-1", "job-2"], "job_id": "job-1", "pairs": 13, "failed_batches": 1}
+
+
 @pytest.mark.parametrize("corpo", [
-    {"limit": dono.SUGGEST_MAX_PAIRS + 1}, {"limit": 0}, {"limit": True}, {"equipment_exercise_ids": []},
-    {"equipment_exercise_ids": list(range(1, dono.SUGGEST_MAX_PAIRS + 2))}, {"equipment_exercise_ids": [0]},
+    {"limit": dono.SUGGEST_MAX_PAIRS_PER_REQUEST + 1}, {"limit": 0}, {"limit": True}, {"equipment_exercise_ids": []},
+    {"equipment_exercise_ids": list(range(1, dono.SUGGEST_MAX_PAIRS_PER_REQUEST + 2))}, {"equipment_exercise_ids": [0]},
     {"equipment_exercise_ids": ["a"]}, {"equipment_exercise_ids": [True]}, {"extra": 1},
 ])
 def test_suggest_corpo_estrito_e_teto_422(db, despacho, corpo):

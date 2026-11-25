@@ -23,7 +23,8 @@ def test_vocabulario_exporta_acoes_listas_de_estado_e_teto():
     assert v["default_status"] == rp.ADMIN_DEFAULT_STATUS == rp.APPROVE_STATUS and v["default_status"] in v["status"]
     assert v["pending_statuses"] == sorted(rp.PENDING_STATUSES)
     assert set(v["human_review_statuses"]) == set(rp.HUMAN_REVIEW_STATUSES) == {"reviewed", "verified", "rejected"}
-    assert v["suggest_max_pairs"] == rp.SUGGEST_MAX_PAIRS
+    assert v["suggest_max_pairs"] == rp.SUGGEST_MAX_PAIRS_PER_REQUEST == 30
+    assert v["suggest_pairs_per_job"] == rp.SUGGEST_PAIRS_PER_JOB == 6
 
 
 def test_ausencia_vira_unknown_nunca_constante():

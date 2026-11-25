@@ -49,7 +49,7 @@ const vocab = {
   version: 'v', source: { s1: 'S1' }, mechanism: { m1: 'M1' }, trajectory: { t1: 'T1' }, profile: { p1: 'P1' },
   line: { l1: 'L1' }, direction_changes: { d1: 'D1' }, flags: { f1: 'F1' }, confidence: { c1: 'C1' }, origin: { o1: 'O1' },
   status: { z: 'Zeta', y: 'Ypsilon', x: 'Xi', w: 'Omega' },
-  default_status: 'w', actions: { approve: 'x', reject: 'z' }, pending_statuses: ['z'], human_review_statuses: ['x'], suggest_max_pairs: 7,
+  default_status: 'w', actions: { approve: 'x', reject: 'z' }, pending_statuses: ['z'], human_review_statuses: ['x'], suggest_max_pairs: 7, suggest_pairs_per_job: 3,
 };
 const row = {
   ...perfil, equipment_exercise_id: 5, equipment_id: 1, equipment_name: 'Maq', exercise_id: 2, exercise_name: 'Supino',
@@ -194,6 +194,23 @@ describe('aba de perfis de resistência (renderização)', () => {
     const before = listCalls();
     await click(byText('Sugerir por IA (pendentes)'));
     for (let i = 0; i < 3; i++) await act(async () => new Promise((r) => setTimeout(r, 10)));
+    expect(listCalls()).toBeGreaterThan(before);
+  });
+
+  it('sugestão em lotes: um job falha, o resumo soma e mostra lotes com erro, e a lista atualiza', async () => {
+    await mount(true);
+    const listCalls = () => apiFetch.mock.calls.filter((c) => String(c[0]).startsWith('/resistance-profiles?')).length;
+    apiFetch.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (url.includes('/suggest')) return { job_ids: ['a', 'b'], job_id: 'a', pairs: 5, failed_batches: 0 };
+      if (url === '/jobs/a') return { status: 'done', result: { processed: 3, suggested: 2, skipped: 1, failed: [] } };
+      if (url === '/jobs/b') return { status: 'failed', error: 'x' };
+      return routeImpl(url, init);
+    });
+    const before = listCalls();
+    await click(byText('Sugerir por IA (pendentes)'));
+    for (let i = 0; i < 3; i++) await act(async () => new Promise((r) => setTimeout(r, 10)));
+    expect(host.textContent).toContain('Sugeridos: 2. Pulados: 1.');
+    expect(host.textContent).toContain('Lotes com erro: 1 de 2');
     expect(listCalls()).toBeGreaterThan(before);
   });
 

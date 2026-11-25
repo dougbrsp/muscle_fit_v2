@@ -114,11 +114,12 @@ REJECT_STATUS: Final = "rejected"
 # Estado inicial do editor para um par sem perfil: o admin que cria à mão já é a revisão humana.
 ADMIN_DEFAULT_STATUS: Final = APPROVE_STATUS
 
-# Teto de pares por job de sugestão da IA. Limite operacional (não é regra de domínio): o job roda na Lambda de
-# 60 s (`async_jobs.LAMBDA_TIMEOUT_SECONDS`), uma chamada leve por par, ~52 s úteis (60 menos a reserva do worker).
-# 6 pares deixam ~8 s por chamada (p95 de um modelo leve); 10 não cabem. Mora no dono para a rota, o corpo da
-# requisição e o worker compartilharem o mesmo valor.
-SUGGEST_MAX_PAIRS: Final = 6
+# Limites operacionais da sugestão da IA (não são regra de domínio). O job roda na Lambda de 60 s
+# (`async_jobs.LAMBDA_TIMEOUT_SECONDS`), uma chamada leve por par, ~52 s úteis (60 menos a reserva do worker):
+# 6 pares por job deixam ~8 s por chamada (p95 de um modelo leve); 10 não cabem. Um clique aceita até 30 pares,
+# que a rota divide em jobs de 6. Moram no dono para a rota, o corpo da requisição e o worker usarem o mesmo valor.
+SUGGEST_MAX_PAIRS_PER_REQUEST: Final = 30
+SUGGEST_PAIRS_PER_JOB: Final = 6
 
 _VOCAB_FIELDS: Final[dict[str, dict[str, str]]] = {
     "source": SOURCES,
@@ -251,7 +252,8 @@ def export_vocabulary() -> dict[str, Any]:
         "actions": {"approve": APPROVE_STATUS, "reject": REJECT_STATUS},
         "pending_statuses": sorted(PENDING_STATUSES),
         "human_review_statuses": sorted(HUMAN_REVIEW_STATUSES),
-        "suggest_max_pairs": SUGGEST_MAX_PAIRS,
+        "suggest_max_pairs": SUGGEST_MAX_PAIRS_PER_REQUEST,
+        "suggest_pairs_per_job": SUGGEST_PAIRS_PER_JOB,
     }
 
 
