@@ -3540,6 +3540,13 @@ Imagens são embutidas como `data:image/png;base64,...`.
 - Tela: números da prévia do rascunho salvo ficam ocultos com edição não salva; aviso do ciclo só por dia.
 - Impacto em produção: 1 plano vigente, na política `vary_kcal`; 0 com compensação pela gordura (informado pelo usuário em 25/11/2026). `ENGINE_VERSION` `nutrition-v7`: metas não congeladas de hoje em diante são regravadas (no plano vigente, com os mesmos valores); dias passados e congelados não mudam. Planos com ciclo e compensação podem ter dias com o ciclo não aplicado.
 
+### Prévia do plano de nutrição: avisos do lote 54 (25/11/2026)
+
+- Código novo de aviso no campo `warnings` da prévia (valor novo em campo existente, aditivo; `nutrition_plans.py` não muda): `fat_compensation_ignored_manual`, com gramas manuais e política de compensação pela gordura. O motor aplica "variar as calorias" (`vary_kcal`) e a gordura fica nos gramas fixos. Dono: `api/app/domain/nutrition/carb_cycling.py`; rótulo em `labels.py`. A tela (`PlanCycleDays.tsx`) mostra o aviso sob o seletor de política, com o texto do espelho (`nutrition.fat_compensation_ignored_manual_label`). Não bloqueia.
+- Avisos de dias fora de `publish_days` voltam à lista geral de `warnings` só pelo frontend: `withoutDayWarnings` (`PlanCycleDays.tsx`) tira da lista só o aviso que aparece em algum dia exibido (`PlanPreview.tsx`, `PlanForm.tsx`).
+- Manutenção: a ingestão não desce abaixo de `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB, também com ajuste ≥ 0 (`strategy.py`, código `min_intake_bmr_multiple`). Sem mudança de campo na API. Fases de manutenção, diet break e refeed dentro de um plano de cutting usam a mesma função (`phases.MAINTENANCE_KCAL_PHASES`, `params.as_maintenance()`) e só mudam se o gasto estimado ficar abaixo da TMB.
+- `ENGINE_VERSION` `nutrition-v8`. Impacto em produção (informado pelo usuário em 25/11/2026): 1 plano vigente, cutting com "variar as calorias" e sem gramas manuais, portanto valores inalterados; as metas não congeladas são regravadas com os mesmos valores; dias congelados não mudam. Mapa: `docs/motores/FONTES_DA_VERDADE.md` (lote 54); decisão: `docs/adr/0029-ciclo-de-carboidratos-com-compensacao-em-gordura.md` (seção de 25/11/2026, lote 54).
+
 ## 03 — Frontend MuscleFit (versão AWS)
 
 Documento descritivo do frontend em `C:\muscle_fit\frontend` (código em `frontend/src`, 34.048 linhas TS/TSX contadas por `wc -l` em `src/**/*.ts{,x}`; 27.738 delas em `src/app`, 6.240 em `src/lib` + `src/components` + `src/theme.ts`). Descreve o código como ele está em 2026-09-12. Identificadores técnicos mantidos no original. Onde algo não pôde ser confirmado no repositório, está marcado como "não verificado".

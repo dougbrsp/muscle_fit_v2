@@ -763,6 +763,9 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "A compensação com gordura limitou a oscilação do carboidrato neste dia para a gordura ficar dentro da faixa "
         "recomendada da estratégia. A energia e a proteína do dia não mudam."
     ),
+    cc_mod.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL: (
+        "Com gramas manuais, a compensação pela gordura não se aplica: o ciclo varia as calorias."
+    ),
     cc_mod.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED: "gordura base fora da faixa da estratégia: ciclo não aplicado neste dia",
     cc_mod.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED: (
         "A meta base não fecha em calorias, proteína, carboidrato e gordura; a compensação com gordura não pode ser aplicada."

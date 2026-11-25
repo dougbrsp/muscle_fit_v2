@@ -340,14 +340,16 @@ def kcal_target(
         delta = superavit * tdee
         return KcalTarget(kcal=tdee + delta, delta_kcal=delta, rate_applied=None)
     ajuste = float(params.maintenance_kcal_adjust)
-    if ajuste >= 0:  # ajuste 0 (o padrão) e positivo: o resultado de sempre, bit a bit
+    bmr = positive_number(bmr_kcal)
+    # Piso de TMB também com gasto estimado menor que a TMB (adaptativo): a ingestão não desce do piso do cutting.
+    if ajuste >= 0 and (bmr is None or tdee + ajuste >= CUT_MIN_INTAKE_BMR_MULTIPLE * bmr):  # o resultado de sempre, bit a bit
         return KcalTarget(kcal=tdee + ajuste, delta_kcal=ajuste, rate_applied=None)
-    return _maintenance_with_cut(tdee, ajuste, positive_number(bmr_kcal))
+    return _maintenance_with_cut(tdee, ajuste, bmr)
 
 
 def _maintenance_with_cut(tdee: float, ajuste: float, bmr_kcal: Optional[float]) -> KcalTarget:
     """Manutenção com ajuste NEGATIVO: a meta não desce abaixo de `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB nem do bloqueio de
-    energia (`manual_targets.KCAL_BLOCK_MIN`), e nunca acima do gasto por causa do piso. O limite aplicado fica em
+    energia (`manual_targets.KCAL_BLOCK_MIN`); o piso de TMB vale mesmo que o gasto estimado seja menor (L54). O limite aplicado fica em
     `clamped_by`, como no cutting."""
     from .manual_targets import KCAL_BLOCK_MIN  # import local: `manual_targets` já importa este módulo
 
@@ -357,7 +359,7 @@ def _maintenance_with_cut(tdee: float, ajuste: float, bmr_kcal: Optional[float])
     if bmr_kcal is None:
         limitacoes.append(LIMIT_MISSING_BMR_FOR_FLOOR)
     else:
-        piso_tmb = min(CUT_MIN_INTAKE_BMR_MULTIPLE * bmr_kcal, tdee)
+        piso_tmb = CUT_MIN_INTAKE_BMR_MULTIPLE * bmr_kcal  # vale mesmo acima do gasto (L54, igual ao cutting)
         if ingestao < piso_tmb:
             ingestao = piso_tmb
             clamps.append(CLAMP_MIN_INTAKE_BMR_MULTIPLE)

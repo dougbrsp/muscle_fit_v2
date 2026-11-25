@@ -28,6 +28,10 @@ type Props = {
   userId?: number | null;
   /** Semana da prévia do rascunho salvo (gordura em g e % por dia, da API); sem ela, não mostra. */
   week?: NutritionDayTarget[];
+  /** "Definir as gramas manualmente" ligado: com a política de compensação, ela não se aplica. */
+  manualOn?: boolean;
+  /** Rótulo do aviso vindo da API (prévia), quando houver. */
+  ignoredManualLabel?: string | null;
 };
 
 /** Avisos do motor que a tela mostra por dia (códigos do espelho gerado): carbo limitado e ciclo não aplicado. */
@@ -36,9 +40,13 @@ const DAY_WARNING_CODES: ReadonlyArray<string> = [
   motorConstants.nutrition.fat_compensation_cycle_skipped,
 ];
 
-/** Lista global sem os avisos que já aparecem no resumo de cada dia (evita repetir). */
-export function withoutDayWarnings<T extends { code: string }>(items: T[]): T[] {
-  return items.filter((item) => !DAY_WARNING_CODES.includes(item.code));
+/**
+ * Lista global sem os avisos que de fato aparecem no resumo de algum dia exibido (evita repetir);
+ * aviso de dia que não é exibido (ex.: fora de `publish_days`) continua na lista global.
+ */
+export function withoutDayWarnings<T extends { code: string }>(items: T[], shownDays: NutritionDayTarget[]): T[] {
+  const mostrados = new Set(shownDays.flatMap((dia) => dia.limitations.map((item) => item.code)));
+  return items.filter((item) => !(DAY_WARNING_CODES.includes(item.code) && mostrados.has(item.code)));
 }
 
 /** Gordura do dia em g e % das kcal (ambos da API) e o aviso de carbo limitado, com o rótulo pronto. */
@@ -75,7 +83,7 @@ export function flatCycleDays(normalCode: NutritionCode): CycleDaysValue {
  * baixo, ou puxa a proposta do Modelo de treino e ajusta. A média semanal e os multiplicadores
  * são do motor; aqui só se escolhe o tipo de cada dia.
  */
-export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, policy, onPolicyChange, userId, week }: Props) {
+export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, policy, onPolicyChange, userId, week, manualOn, ignoredManualLabel }: Props) {
   const normal = DEFAULT_DAY_KIND;
   const templateMutation = useMutation({
     mutationFn: () => fetchCycleDaysFromTemplate(userId ?? null),
@@ -134,6 +142,11 @@ export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, polic
             <Text size="xs" c={BRAND.textMuted} mt={4}>
               {cyclePolicyHint(policy)}
             </Text>
+            {manualOn && policy === motorConstants.nutrition.fat_compensation_policy && (
+              <Text size="xs" c="yellow" mt={4} role="status" data-testid="aviso-manual-compensacao">
+                {ignoredManualLabel ?? motorConstants.nutrition.fat_compensation_ignored_manual_label}
+              </Text>
+            )}
           </div>
           {WEEKDAY_OPTIONS.map((dia) => (
             <div key={dia.value}>

@@ -233,6 +233,36 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
     expect(host.textContent).toContain('Carbo do dia limitado.');
   });
 
+  it('rascunho: aviso de dia fora de publish_days continua na lista geral; o de dia exibido não duplica', async () => {
+    const plano = { id: 9, user_id: 1, updated_at: 't', state: 'draft' } as never;
+    const dia = (local_date: string, limitations: object[]) => ({
+      local_date, fat_g: 90, kcal: 2000, limitations, macro_kcal_shares: { protein: 0.3, carb: 0.4, fat: 0.3 },
+    });
+    const limitado = { code: 'fat_compensation_carb_limited', label: 'Carbo limitado.' };
+    const ignorado = { code: 'fat_compensation_ignored_manual', label: 'Manual ignora compensação.' };
+    const previa = {
+      plan: plano, today: '2026-11-24', publish_days: ['2026-11-24'], limitations: [], blocking: [], can_publish: true, manual_check: null,
+      subject: {}, goal: {}, projection: { status: 'x', reason_items: [] }, target: alvo({}),
+      warnings: [limitado, ignorado],
+      week: [dia('2026-11-23', [ignorado]), dia('2026-11-24', [limitado])],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(planPreviewQuery(plano).queryKey, previa);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlanId: 1, onPublished: () => {} })),
+        ),
+      );
+    });
+    const texto = host.textContent ?? '';
+    expect(texto.match(/Carbo limitado\./g)).toHaveLength(1); // só no dia exibido
+    expect(texto).toContain('Manual ignora compensação.'); // dia 23 fora de publish_days: fica na lista geral
+  });
+
   it('o card Plano e a prévia compartilham a mesma queryKey (um só POST)', () => {
     const plano = { id: 7, updated_at: '2026-11-05T10:00:00', state: 'draft' };
     expect(planPreviewQuery(plano).queryKey).toEqual(planPreviewQuery({ ...plano }).queryKey);

@@ -116,6 +116,8 @@ def _semana(plano, sujeito=SUJEITO, **extra):
 
 @pytest.mark.parametrize("modo", [None, ManualTrainingMode.FIXED, ManualTrainingMode.ADD_TRAINING])
 def test_dia_com_e_sem_treino_tem_a_kcal_do_alvo_pre_ciclo(modo):
+    # Sem gramas manuais a compensação mantém a kcal do alvo pré-ciclo; com gramas manuais (L54) vale vary_kcal:
+    # gordura e proteína fixas, só o carbo e a kcal oscilam, e a soma semanal do delta de carbo é zero.
     manual = {} if modo is None else {"manual_macros": MANUAL, "manual_training_mode": modo}
     comum = {"tdee_mode": TdeeMode.EXPLICIT_TRAINING, **manual}
     sem_ciclo = _plano(st.Strategy.BULKING, **comum)
@@ -124,21 +126,42 @@ def test_dia_com_e_sem_treino_tem_a_kcal_do_alvo_pre_ciclo(modo):
         for ctx in (_dia(i), _dia(i, is_training_day=True, training_kcal_reported=500.0)):
             pre = compute_daily_target(SUJEITO, sem_ciclo, ctx)
             dia = compute_daily_target(SUJEITO, com, ctx)
-            # A gordura do dia fica na faixa da estratégia: o carbo é limitado e o aviso é o único acréscimo.
-            assert tuple(x for x in dia.limitations if x != cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED) == pre.limitations
-            assert dia.macros.kcal == pytest.approx(pre.macros.kcal)
             assert dia.macros.protein_g == pytest.approx(pre.macros.protein_g)
-            assert dia.carb_cycle_policy == FAT and dia.day_kind == SEMANA[i]
-            assert dia.to_dict()["carb_cycle_policy"] == "fat_compensation"
-    # soma semanal de kcal = soma dos alvos pré-ciclo
-    assert sum(m.macros.kcal for m in _semana(com)) == pytest.approx(sum(m.macros.kcal for m in _semana(sem_ciclo)))
+            assert dia.day_kind == SEMANA[i]
+            if modo is None:
+                # A gordura do dia fica na faixa da estratégia: o carbo é limitado e o aviso é o único acréscimo.
+                assert tuple(x for x in dia.limitations if x != cc.LIMIT_FAT_COMPENSATION_CARB_LIMITED) == pre.limitations
+                assert dia.macros.kcal == pytest.approx(pre.macros.kcal)
+                assert dia.carb_cycle_policy == FAT
+                assert dia.to_dict()["carb_cycle_policy"] == "fat_compensation"
+            else:
+                assert dia.macros.fat_g == pytest.approx(pre.macros.fat_g)
+                assert dia.carb_cycle_policy == cc.CarbCyclePolicy.VARY_KCAL
+                assert cc.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL in dia.limitations
+                assert dia.macros.kcal == pytest.approx(pre.macros.kcal + 4 * (dia.macros.carb_g - pre.macros.carb_g))
+    if modo is None:
+        assert sum(m.macros.kcal for m in _semana(com)) == pytest.approx(sum(m.macros.kcal for m in _semana(sem_ciclo)))
 
 
 def test_dia_baixo_tem_mais_gordura_e_alto_menos_no_motor():
-    plano = _plano(manual_macros=MANUAL, cycle_kinds=SEMANA, carb_cycle_policy=FAT)
+    plano = _plano(cycle_kinds=SEMANA, carb_cycle_policy=FAT)
+    metas, base = _semana(plano), compute_daily_target(SUJEITO, _plano(), _dia(0)).macros
+    assert metas[1].macros.fat_g > base.fat_g > metas[0].macros.fat_g
+    assert metas[1].macros.carb_g < base.carb_g < metas[0].macros.carb_g
+
+
+@pytest.mark.parametrize("modo", [ManualTrainingMode.FIXED, ManualTrainingMode.ADD_TRAINING])
+def test_gramas_manuais_com_compensacao_usam_vary_kcal_e_avisam(modo):
+    """L54 (#313): com gramas manuais a gordura fica nos gramas fixos em todos os dias; só o carbo oscila."""
+    manual = (160.0, 250.0, 60.0)
+    plano = _plano(st.Strategy.CUTTING, manual_macros=manual, manual_training_mode=modo, cycle_kinds=SEMANA, carb_cycle_policy=FAT)
     metas = _semana(plano)
-    assert metas[1].macros.fat_g > 70.0 > metas[0].macros.fat_g
-    assert metas[1].macros.carb_g < 250.0 < metas[0].macros.carb_g
+    assert {m.macros.fat_g for m in metas} == {60.0}
+    assert metas[0].macros.carb_g > 250.0 > metas[1].macros.carb_g
+    for m in metas:
+        assert m.carb_cycle_policy == cc.CarbCyclePolicy.VARY_KCAL
+        assert cc.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL in m.limitations
+    assert lb.limitation_label(cc.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL).startswith("Com gramas manuais")
 
 
 def test_padrao_nao_muda_saida_nem_dict():
@@ -153,11 +176,20 @@ def test_inviavel_no_dia_devolve_alvo_sem_ciclo_e_limitacao():
     # Sem faixa, gordura final negativa continua inviável (caso real do dono); com faixa, a base fora dela anula o ciclo.
     alvo = _alvo(gordura=10.0)
     assert cc._day_with_fat_compensation(alvo, 45.0) == (alvo, (cc.LIMIT_FAT_COMPENSATION_INFEASIBLE,))
-    plano = _plano(manual_macros=(160.0, 250.0, 10.0), cycle_kinds=SEMANA, carb_cycle_policy=FAT)
-    alto = compute_daily_target(SUJEITO, plano, _dia(0))
-    assert cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED in alto.limitations
-    assert alto.macros.carb_g == 250.0 and alto.macros.fat_g == 10.0
-    assert alto.carb_cycle_policy == cc.DEFAULT_CARB_CYCLE_POLICY
+
+
+def test_gordura_base_fora_da_faixa_da_estrategia_pula_o_ciclo():
+    # LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED: fração de gordura fora da faixa é só aviso na montagem, então é alcançável.
+    base = _plano()
+    sem_ciclo = replace(base, strategy_params=replace(base.strategy_params, fat_kcal_share=0.05))
+    dias = _semana(replace(sem_ciclo, cycle_kinds=SEMANA, carb_cycle_policy=FAT))
+    pre = compute_daily_target(SUJEITO, sem_ciclo, _dia(0))
+    assert any(cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED in d.limitations for d in dias)
+    assert all(d.macros.fat_g == pytest.approx(pre.macros.fat_g) for d in dias)
+    # Direto no dono: gordura base abaixo da faixa e delta que a baixaria mais.
+    alvo = _alvo(gordura=10.0)
+    faixa = st.fat_share_range_for(st.Strategy.MAINTENANCE)
+    assert cc._day_with_fat_compensation(alvo, 45.0, faixa) == (alvo, (cc.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED,))
 
 
 # --- plan -----------------------------------------------------------------------------------------------------
@@ -207,26 +239,24 @@ def test_check_cycle_floors_modo_novo_viavel_sem_erro_e_padrao_inalterado():
     assert pl.check_cycle_floors(padrao, SUJEITO) == pl.check_cycle_floors(replace(novo, carb_cycle_policy=cc.DEFAULT_CARB_CYCLE_POLICY), SUJEITO)
 
 
-def test_check_cycle_floors_gordura_base_fora_da_faixa_anula_o_ciclo_e_so_avisa():
-    # Gordura base de 40 g (fora da faixa): o ciclo do dia é anulado, a gordura não cai mais e só sobra o aviso de faixa.
-    cfg = _cfg(manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 40}, cycle_policy="fat_compensation")
-    erros, avisos = pl.check_cycle_floors(cfg, SUJEITO)
-    assert erros == () and avisos and all(a.startswith(pl.WARN_CYCLE_FAT_BELOW_RANGE) for a in avisos)
-
-
-def test_check_cycle_floors_gordura_abaixo_do_piso_bloqueia_e_aviso_de_faixa_vira_aviso():
-    # Gordura base abaixo do piso de bloqueio: o erro é do próprio alvo, barrado já na montagem (o ciclo não o esconde).
+def test_check_cycle_floors_gramas_manuais_com_compensacao_avisam_e_nao_bloqueiam():
+    # L54 (#313): gramas manuais + compensação = vary_kcal; o aviso próprio entra no salvar e a gordura fixa não gera erro de ciclo.
+    for gordura in (40, 70):
+        cfg = _cfg(manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": gordura}, cycle_policy="fat_compensation")
+        erros, avisos = pl.check_cycle_floors(cfg, SUJEITO)
+        assert erros == () and cc.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL in avisos
     r = pl.build_plan_settings(
         strategy="maintenance", cycle_days=CICLO, cycle_policy="fat_compensation",
         manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 15},
     )
     assert not r.ok and r.errors == ("manual_blocked_below:fat_g",)
-    cfg = _cfg(manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 30}, cycle_policy="fat_compensation")
-    assert pl.check_cycle_floors(cfg, SUJEITO)[0] == ()
-    # Proteína acima da faixa de manutenção, abaixo do bloqueio: só aviso.
-    alta = _cfg(manual_targets={"protein_g": 240, "carb_g": 250, "fat_g": 70}, cycle_policy="fat_compensation")
-    erros, avisos = pl.check_cycle_floors(alta, SUJEITO)
-    assert erros == () and any(a.startswith("manual_above_range:protein") or a.startswith("manual_below_range") for a in avisos)
+
+
+def test_check_cycle_floors_proteina_acima_da_faixa_com_compensacao_so_avisa():
+    # Fora do salvar (a montagem barra proteína fora da faixa), o valor chega por settings montados à mão.
+    cfg = replace(_cfg(cycle_policy="fat_compensation"), protein_g_per_kg=3.5)
+    erros, avisos = pl.check_cycle_floors(cfg, SUJEITO)
+    assert erros == () and "manual_above_range:protein_g" in avisos
 
 
 # --- labels ---------------------------------------------------------------------------------------------------

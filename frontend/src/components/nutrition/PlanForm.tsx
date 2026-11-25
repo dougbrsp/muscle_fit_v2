@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { formatNumberOrDash } from '@/lib/format';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
+import motorConstants from '@/lib/motor-constants.generated.json';
 import { PlanCycleDays, flatCycleDays, withoutDayWarnings, type CycleDaysValue } from './PlanCycleDays';
 import { PlanSuggestionPanel } from './PlanSuggestionPanel';
 import { createNutritionPlan, nutritionErrorInfo, planPreviewQuery, updateNutritionPlan } from '@/lib/nutrition-api';
@@ -169,6 +170,13 @@ export function initialState(plan: NutritionPlan | null): FormState {
 }
 
 /** Limites do campo em % a partir da faixa em fração do motor. */
+/** Rótulo do aviso "gramas manuais ignoram a compensação" vindo da prévia (aviso geral ou de algum dia), se houver. */
+function ignoredManualLabel(preview: { warnings: { code: string; label: string }[]; week: { limitations: { code: string; label: string }[] }[] } | undefined): string | null {
+  const code = motorConstants.nutrition.fat_compensation_ignored_manual;
+  const itens = [...(preview?.warnings ?? []), ...(preview?.week.flatMap((dia) => dia.limitations) ?? [])];
+  return itens.find((item) => item.code === code)?.label ?? null;
+}
+
 function percentBounds(faixa: ReadonlyArray<number> | undefined): { min?: number; max?: number } {
   if (!faixa) return {};
   return { min: shareToPercent(faixa[0]) ?? undefined, max: shareToPercent(faixa[1]) ?? undefined };
@@ -570,8 +578,10 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
             onChange={(cycleDays) => update({ cycleDays })}
             userId={userId}
             week={semSalvar ? undefined : preview?.week}
+            manualOn={form.manualOn}
+            ignoredManualLabel={semSalvar ? null : ignoredManualLabel(preview)}
           />
-          {form.cycleOn && preview && !semSalvar && <NutritionLimitations items={withoutDayWarnings(preview.warnings)} title="Avisos do rascunho salvo" />}
+          {form.cycleOn && preview && !semSalvar && <NutritionLimitations items={withoutDayWarnings(preview.warnings, preview.week)} title="Avisos do rascunho salvo" />}
 
           <Textarea
             label="Observações"

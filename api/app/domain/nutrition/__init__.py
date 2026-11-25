@@ -167,6 +167,9 @@ def export_for_frontend() -> dict[str, Any]:
         # Avisos do ciclo com compensação de gordura (L53): o FE só compara o código, sem regra numérica.
         "fat_compensation_carb_limited": carb_cycling.LIMIT_FAT_COMPENSATION_CARB_LIMITED,
         "fat_compensation_cycle_skipped": carb_cycling.LIMIT_FAT_COMPENSATION_CYCLE_SKIPPED,
+        "fat_compensation_ignored_manual": carb_cycling.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL,
+        "fat_compensation_ignored_manual_label": lb.limitation_label(carb_cycling.LIMIT_FAT_COMPENSATION_IGNORED_MANUAL),
+        "fat_compensation_policy": carb_cycling.CarbCyclePolicy.FAT_COMPENSATION.value,
         "day_kinds": _codes(carb_cycling.DayKind),
         "default_day_kind": carb_cycling.DayKind.NORMAL.value,
         "day_kind_labels": lb.labels_by_code(lb.DAY_KIND_LABELS),
