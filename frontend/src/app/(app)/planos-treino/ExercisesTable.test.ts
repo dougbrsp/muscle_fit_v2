@@ -113,6 +113,22 @@ async function click(el: Element | null) {
   });
 }
 
+describe('ExercisesTable: RPE em texto', () => {
+  it('editar o texto (linha sem séries) zera a lista por série vinda da sugestão', async () => {
+    const onChange = vi.fn();
+    await render([row({ sets_count: null, rpe_target: '8', rpe_targets_by_set: [7, 8, 9], rpe_edited: true })], false, { onChange });
+    const input = Array.from(host.querySelectorAll<HTMLInputElement>('input')).find((i) => i.value === '8')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '9');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const next = onChange.mock.calls.at(-1)![0] as WorkoutPlanExercise[];
+    expect(next[0].rpe_target).toBe('9');
+    expect(next[0].rpe_targets_by_set).toEqual([]);
+    expect(next[0].rpe_edited).toBe(false);
+  });
+});
+
 describe('ExercisesTable: layout da tabela', () => {
   it('não tem mais a coluna "Aquec." nem checkbox de aquecimento', async () => {
     await render([row({ warmup: true })]);
