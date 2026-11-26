@@ -1,9 +1,9 @@
 'use client';
 
-import { Alert, Button, FileButton, Group, Loader, Modal, NumberInput, Select, Stack, Text, Textarea } from '@mantine/core';
-import { IconAlertTriangle, IconCamera, IconPhoto, IconSparkles } from '@tabler/icons-react';
+import { ActionIcon, Alert, Button, FileButton, Group, Loader, Modal, NumberInput, Select, Stack, Text, Textarea } from '@mantine/core';
+import { IconAlertTriangle, IconCamera, IconPhoto, IconSparkles, IconX } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { MEAL_PARSE_QUOTA_EXCEEDED_LABEL, MEAL_PARSE_TEXT_MAX_CHARS, MEAL_PHOTO, MEAL_SLOT_OPTIONS } from '@/lib/nutrition-constants';
 import {
@@ -105,9 +105,9 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
 
   const lerFoto = useMutation({
     gcTime: 0, // o cache de mutações não guarda o arquivo original (`variables`) depois que o observador solta
-    mutationFn: (file: File) =>
+    mutationFn: (files: File[]) =>
       readMealPhoto(
-        file,
+        files,
         {
           local_date: date,
           meal_slot: slotFoto,
@@ -117,11 +117,11 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
         },
         setStage,
       ),
-    onSuccess: ({ result, photo }) => {
+    onSuccess: ({ result, photos }) => {
       if (result.items.length === 0) {
         setSemItens(result.limitations);
       } else {
-        onParsed(editorFormFromPhoto(result, { date, slot: slotFoto }, photo));
+        onParsed(editorFormFromPhoto(result, { date, slot: slotFoto }, photos));
         setSlotFoto(null);
         setDescricaoFoto('');
         setPesoTotal('');
@@ -145,10 +145,10 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
     onClose();
   }
 
-  function escolherFoto(file: File) {
+  function analisarFotos(files: File[]) {
     if (lerFoto.isPending) return;
     setSemItens([]);
-    lerFoto.mutate(file);
+    lerFoto.mutate(files);
   }
 
   // Erro da API (413/415/429/503): texto e itens do motor. Falha da redução ou do job
@@ -182,7 +182,7 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
           stage={stage}
           noItems={semItens}
           error={erroFoto}
-          onPick={escolherFoto}
+          onAnalyze={analisarFotos}
           onClose={fechar}
         />
       ) : (
@@ -260,7 +260,8 @@ type PhotoReadingProps = {
   /** Foto sem comida ou não identificada: o motivo, pronto do motor. */
   noItems: NutritionLimitation[];
   error: ReadingError | null;
-  onPick: (file: File) => void;
+  /** Todas as fotos juntadas (1 a `MEAL_PHOTO.images_per_reading`), uma única leitura. */
+  onAnalyze: (files: File[]) => void;
   onClose: () => void;
 };
 
@@ -269,17 +270,25 @@ type PhotoReadingProps = {
  * envio (sem EXIF/XMP) e a IA só identifica os alimentos e estima os gramas. Foto sem
  * comida ou não identificada volta com a lista vazia e o motivo, sem abrir o editor.
  */
-export function PhotoReading({ slot, onSlotChange, description = '', onDescriptionChange, totalGrams = '', onTotalGramsChange, quota, busy, stage, noItems, error, onPick, onClose }: PhotoReadingProps) {
+export function PhotoReading({ slot, onSlotChange, description = '', onDescriptionChange, totalGrams = '', onTotalGramsChange, quota, busy, stage, noItems, error, onAnalyze, onClose }: PhotoReadingProps) {
+  const [fotos, setFotos] = useState<File[]>([]);
+  const [urls, setUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const novas = fotos.map((f) => URL.createObjectURL(f));
+    setUrls(novas);
+    return () => novas.forEach((u) => URL.revokeObjectURL(u));
+  }, [fotos]);
+  const cheio = fotos.length >= MEAL_PHOTO.images_per_reading;
   const resetCamera = useRef<() => void>(null);
   const resetGaleria = useRef<() => void>(null);
   const pesoInvalido = totalGrams !== '' && !gramasValidos(totalGrams);
   const cotaEsgotada = quota ? !quota.allowed : false;
   const esgotada = cotaEsgotada || pesoInvalido;
 
-  function escolher(file: File | null) {
-    if (!file) return;
-    onPick(file);
-    // Sem isto, escolher a mesma foto depois de um erro não dispara o `change` do input.
+  function adicionar(escolhidas: File | File[] | null) {
+    const lista = Array.isArray(escolhidas) ? escolhidas : escolhidas ? [escolhidas] : [];
+    if (lista.length) setFotos((atual) => [...atual, ...lista].slice(0, MEAL_PHOTO.images_per_reading));
+    // Sem isto, escolher a mesma foto depois de remover não dispara o `change` do input.
     resetCamera.current?.();
     resetGaleria.current?.();
   }
@@ -287,7 +296,7 @@ export function PhotoReading({ slot, onSlotChange, description = '', onDescripti
   return (
     <Stack gap="sm">
       <Text size="sm" c={BRAND.textMuted}>
-        Fotografe o prato de cima, inteiro e bem iluminado. A foto é reduzida no seu aparelho antes do envio e expira
+        Fotografe o prato de cima, inteiro e bem iluminado. Se precisar, junte até {MEAL_PHOTO.images_per_reading} fotos da mesma refeição: elas contam como uma análise só. A foto é reduzida no seu aparelho antes do envio e expira
         depois de {MEAL_PHOTO.retention_label}. A IA identifica os alimentos e estima os gramas; você confere, edita,
         remove ou adiciona itens antes de salvar.
       </Text>
@@ -349,24 +358,55 @@ export function PhotoReading({ slot, onSlotChange, description = '', onDescripti
         </Alert>
       ))}
       {error && <ErrorAlert erro={error} />}
+      {fotos.length > 0 && (
+        <Group gap="xs" wrap="wrap" role="list" aria-label="Fotos da refeição">
+          {fotos.map((f, i) => (
+            <div key={`${f.name}-${f.lastModified}-${i}`} role="listitem" style={{ position: 'relative' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={urls[i]} alt={`Foto ${i + 1} de ${fotos.length}`} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+              <ActionIcon
+                size="xs"
+                variant="filled"
+                color="gray"
+                radius="xl"
+                aria-label={`Remover foto ${i + 1}`}
+                disabled={busy}
+                onClick={() => setFotos((atual) => atual.filter((_, j) => j !== i))}
+                style={{ position: 'absolute', top: -6, right: -6 }}
+              >
+                <IconX size={12} />
+              </ActionIcon>
+            </div>
+          ))}
+        </Group>
+      )}
       <Group justify="flex-end" gap="sm" wrap="wrap">
         <Button variant="subtle" color="gray" onClick={onClose} disabled={busy}>
           Cancelar
         </Button>
-        <FileButton resetRef={resetGaleria} onChange={escolher} accept="image/*" disabled={busy || esgotada}>
+        <FileButton resetRef={resetGaleria} onChange={adicionar} accept="image/*" multiple disabled={busy || esgotada || cheio}>
           {(props) => (
-            <Button {...props} variant="light" color="brand" leftSection={<IconPhoto size={16} />} disabled={busy || esgotada}>
-              Escolher da galeria
+            <Button {...props} variant="light" color="brand" leftSection={<IconPhoto size={16} />} disabled={busy || esgotada || cheio}>
+              {fotos.length ? 'Adicionar da galeria' : 'Escolher da galeria'}
             </Button>
           )}
         </FileButton>
-        <FileButton resetRef={resetCamera} onChange={escolher} accept="image/*" capture="environment" disabled={busy || esgotada}>
+        <FileButton resetRef={resetCamera} onChange={adicionar} accept="image/*" capture="environment" disabled={busy || esgotada || cheio}>
           {(props) => (
-            <Button {...props} color="brand" leftSection={<IconCamera size={16} />} loading={busy} disabled={esgotada}>
-              Tirar foto
+            <Button {...props} variant="light" color="brand" leftSection={<IconCamera size={16} />} disabled={busy || esgotada || cheio}>
+              {fotos.length ? 'Adicionar outra foto' : 'Tirar foto'}
             </Button>
           )}
         </FileButton>
+        <Button
+          color="brand"
+          leftSection={<IconSparkles size={16} />}
+          loading={busy}
+          disabled={esgotada || fotos.length === 0}
+          onClick={() => onAnalyze(fotos)}
+        >
+          Analisar
+        </Button>
       </Group>
     </Stack>
   );

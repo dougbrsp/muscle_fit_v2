@@ -1,10 +1,10 @@
 {
-  "_prompt_version": "nutrition-photo-v2",
+  "_prompt_version": "nutrition-photo-v3",
   "input": [
     {
       "content": [
         {
-          "text": "<<PROMPT 5517 chars, sha256 6d70b9a9514a5168>>",
+          "text": "<<PROMPT 5939 chars, sha256 93cbc4eab7e9d759>>",
           "type": "input_text"
         },
         {

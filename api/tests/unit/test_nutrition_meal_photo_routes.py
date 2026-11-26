@@ -151,18 +151,19 @@ def test_upload_despacha_na_ordem_do_contrato_e_responde_202(monkeypatch):
     assert despacho.nomes() == ["open_usage", "put", "create_job", "link_job", "invoke"]
     _, reserva = despacho.eventos[0]
     assert reserva == {"user_id": USUARIO, "feature": AiFeature.MEAL_PHOTO, "prompt_version": PROMPT_VERSION,
-                       "image_count": meal_photo.MEAL_PHOTO_IMAGES_PER_READING}
+                       "image_count": 1}
     assert despacho.eventos[1] == ("put", USUARIO, len(JPEG))
     pedido = {"local_date": DIA, "meal_slot": "lunch", "diary_user_id": USUARIO}
     _, tipo, gravado, dono = despacho.eventos[2]
     assert tipo == MEAL_PHOTO_JOB_TYPE and dono == USUARIO
-    assert gravado == {**pedido, "s3_key": CHAVE, "ai_usage_id": 55}
+    assert gravado == {**pedido, "s3_keys": [CHAVE], "ai_usage_id": 55}
     assert "image_base64" not in gravado  # a foto nunca vai para o DynamoDB
     assert despacho.eventos[3] == ("link_job", 55, "job-1")
     _, env, evento = despacho.eventos[4]
     assert env == "PLAN_GENERATOR_FUNCTION_NAME"
     assert evento == {"job_id": "job-1", "job_kind": MEAL_PHOTO_JOB_TYPE, "user_id": USUARIO, "ai_usage_id": 55,
-                      "s3_key": CHAVE, "payload": {**pedido, "job_id": "job-1", "description": None, "total_grams": None}}
+                      "s3_keys": [CHAVE], "s3_key": CHAVE,  # s3_key: worker antigo na janela do deploy
+                      "payload": {**pedido, "job_id": "job-1", "description": None, "total_grams": None}}
 
 
 def test_terceiro_exige_admin_ou_pt_antes_de_qualquer_coisa(monkeypatch):
@@ -388,4 +389,68 @@ def test_description_que_nao_e_string_da_422_antes_da_cota_e_o_422_ecoa_a_entrad
     assert resposta.status_code == 422
     erro = next(e for e in resposta.json()["detail"] if e["loc"][-1] == "description")
     assert erro["input"] == ["MARCADOR-422"]
+    assert despacho.eventos == []
+
+
+# ---------------------------------------------------------------------------
+# Várias fotos da mesma refeição (#325)
+# ---------------------------------------------------------------------------
+
+
+def _varias(cliente, fotos, **extra):
+    return cliente.post(URL, json={"images_base64": [_b64(f) for f in fotos], "local_date": DIA, **extra})
+
+
+@pytest.mark.parametrize("quantas", [1, 2, 3])
+def test_ate_tres_fotos_uma_leitura_uma_cota_uma_chave_por_foto(monkeypatch, quantas):
+    assert meal_photo.MEAL_PHOTO_IMAGES_PER_READING == 3
+    despacho = _Despacho(monkeypatch)
+    resposta = _varias(_client(), [JPEG] * quantas)
+    assert resposta.status_code == 202, resposta.text
+    nomes = despacho.nomes()
+    assert nomes.count("open_usage") == 1 and nomes.count("put") == quantas
+    assert despacho.eventos[0][1]["image_count"] == quantas
+    [(_, _, gravado, _)] = [e for e in despacho.eventos if e[0] == "create_job"]
+    [(_, _, evento)] = [e for e in despacho.eventos if e[0] == "invoke"]
+    assert gravado["s3_keys"] == [CHAVE] * quantas and evento["s3_keys"] == [CHAVE] * quantas
+    assert evento["s3_key"] == evento["s3_keys"][0]
+    assert "s3_key" not in gravado and "images_base64" not in gravado
+
+
+@pytest.mark.parametrize(
+    "corpo",
+    [
+        {"images_base64": [_b64(JPEG)] * 4},  # acima do dono
+        {"images_base64": []},
+        {"image_base64": _b64(JPEG), "images_base64": [_b64(JPEG)]},  # os dois campos
+        {},  # nenhum
+    ],
+    ids=["quatro", "lista_vazia", "ambos", "nenhum"],
+)
+def test_quantidade_ou_campos_invalidos_400_antes_da_cota_sem_eco(monkeypatch, corpo):
+    despacho = _Despacho(monkeypatch)
+    resposta = _client().post(URL, json={**corpo, "local_date": DIA})
+    assert resposta.status_code == 400, resposta.text
+    assert resposta.json()["detail"]["error"] == meal_photo.ERR_MEAL_PHOTO_COUNT_INVALID
+    assert _b64(JPEG) not in resposta.text
+    assert despacho.eventos == []
+
+
+def test_soma_acima_do_teto_413_antes_da_cota(monkeypatch):
+    despacho = _Despacho(monkeypatch)
+    grande = JPEG + b"j" * (meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES // 3)  # cada uma cabe no teto individual
+    assert len(grande) <= meal_photo.MEAL_PHOTO_MAX_BYTES < 3 * len(grande)
+    assert 3 * len(grande) > meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES
+    resposta = _varias(_client(), [grande] * 3)
+    assert resposta.status_code == 413
+    detalhe = resposta.json()["detail"]
+    assert detalhe["error"] == meal_photo.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE
+    assert detalhe["max_bytes"] == meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES
+    assert despacho.eventos == []
+
+
+def test_foto_invalida_no_meio_da_lista_recusa_antes_da_cota(monkeypatch):
+    despacho = _Despacho(monkeypatch)
+    resposta = _varias(_client(), [JPEG, PNG])
+    assert resposta.status_code == 415
     assert despacho.eventos == []

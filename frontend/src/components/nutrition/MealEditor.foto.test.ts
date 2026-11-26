@@ -82,7 +82,7 @@ const PRIMEIRO = resultado('job-1', [
 ]);
 
 const FOTO = new Blob(['jpeg'], { type: 'image/jpeg' });
-const form = (r = PRIMEIRO, foto: Blob | null = FOTO) => editorFormFromPhoto(r, { date: '2026-11-17', slot: null }, foto);
+const form = (r = PRIMEIRO, fotos: Blob[] = [FOTO]) => editorFormFromPhoto(r, { date: '2026-11-17', slot: null }, fotos);
 
 let root: Root | null = null;
 let host: HTMLElement;
@@ -218,7 +218,7 @@ describe('foto do prato: revisão no editor', () => {
     expect(corpo.items.map((i: { food_id: number }) => i.food_id)).toEqual([3, 410, 7]);
     expect(corpo.items[0]).toMatchObject({ quantity: 200, unit: 'g' });
     expect(corpo.items[1]).toMatchObject({ quantity: 150 });
-    expect(corpo).not.toHaveProperty('photo'); // a foto nunca vai à API
+    expect(corpo).not.toHaveProperty('photos'); // as fotos nunca vai à API
     expect(onSaved).toHaveBeenCalledWith({ id: 99 });
   });
 
@@ -235,7 +235,7 @@ describe('foto do prato: revisão no editor', () => {
     expect(quantidades()).toHaveLength(3);
     const segunda = resultado('job-2', [lido(0, { quantity: 80 })]);
     await act(async () => {
-      root!.render(arvore(form(segunda, new Blob(['outra'])), 'b'));
+      root!.render(arvore(form(segunda, [new Blob(['outra'])]), 'b'));
     });
     await esperar();
     expect(quantidades().map((i) => i.value)).toEqual(['80']);
@@ -265,6 +265,17 @@ describe('foto do prato: revisão no editor', () => {
     await act(async () => { root!.unmount(); });
     root = null;
     expect(revogadas).toEqual([criadas[0]]);
+  });
+
+  it('várias fotos: todas aparecem ao rever e todas as URLs são revogadas ao fechar', async () => {
+    await montar(form(PRIMEIRO, [FOTO, new Blob(['b']), new Blob(['c'])]));
+    await clicarBotao('Ver fotos');
+    const imgs = Array.from(host.querySelectorAll('img')) as HTMLImageElement[];
+    expect(imgs.map((i) => i.getAttribute('src'))).toEqual(criadas.slice(0, 3));
+    expect(imgs[2].alt).toContain('Foto 3 de 3');
+    await act(async () => { root!.unmount(); });
+    root = null;
+    expect(revogadas).toEqual(criadas.slice(0, 3));
   });
 
   it('low_confidence: selo só no item marcado; quantidade mantém; trocar o alimento remove; payload sem o campo', async () => {
@@ -321,7 +332,7 @@ describe('foto do prato: revisão no editor', () => {
   });
 
   it('rascunho sem foto (texto/manual) não mostra a ação', async () => {
-    await montar(form(PRIMEIRO, null));
+    await montar(form(PRIMEIRO, []));
     expect(botao('Ver foto')).toBeUndefined();
     expect(criadas).toHaveLength(0);
   });

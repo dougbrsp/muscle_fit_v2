@@ -41,7 +41,7 @@ class _Resposta:
         return False
 
 
-def _capturar(monkeypatch) -> dict:
+def _capturar(monkeypatch, imagens=IMAGEM) -> dict:
     monkeypatch.setenv("OPENAI_API_KEY", "chave-de-teste")
     monkeypatch.delenv(ai.nutrition_label_ai.MODEL_ENV_VAR, raising=False)
     monkeypatch.delenv("LLM_PROVIDER_MEAL_PHOTO", raising=False)
@@ -52,7 +52,7 @@ def _capturar(monkeypatch) -> dict:
         return _Resposta()
 
     monkeypatch.setattr(openai_client.urllib.request, "urlopen", _fake)
-    ai.read_meal_photo(IMAGEM)
+    ai.read_meal_photo(imagens)
     [corpo] = enviados
     return corpo
 
@@ -86,3 +86,15 @@ def test_pedido_da_foto_do_prato_igual_ao_snapshot(monkeypatch):
         prompt + "\n", referencia, "prompt da foto do prato", regerar="NUTRITION_PROMPT_SNAPSHOT_WRITE"
     )
     assert CORPO.read_text(encoding="utf-8") == texto_resumo, "corpo da foto do prato mudou"
+
+
+def test_varias_fotos_vao_como_um_bloco_de_imagem_cada_com_o_mesmo_prompt(monkeypatch):
+    """Duas fotos da mesma refeição: um texto e dois blocos de imagem, na ordem, e o
+    prompt igual ao da foto única (o snapshot acima continua valendo)."""
+    prompt_um, _ = _resumo(_capturar(monkeypatch))
+    [mensagem] = _capturar(monkeypatch, [IMAGEM, IMAGEM + b"-lado"])["input"]
+    texto, *imagens = mensagem["content"]
+    assert texto["text"] == prompt_um
+    assert len(imagens) == 2
+    assert imagens[0]["type"] == imagens[1]["type"] != texto["type"]
+    assert imagens[0]["image_url"] != imagens[1]["image_url"]

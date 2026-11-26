@@ -364,6 +364,11 @@ def export_for_frontend() -> dict[str, Any]:
         # (a API confere de novo: 413/415). A cota do dia vem da API, nunca daqui.
         "meal_photo": {
             "max_bytes": meal_photo.MEAL_PHOTO_MAX_BYTES,
+            # Várias fotos da mesma refeição (#325): quantas por leitura e o teto da soma.
+            "images_per_reading": meal_photo.MEAL_PHOTO_IMAGES_PER_READING,
+            "total_max_bytes": meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES,
+            "count_invalid_label": lb.LIMITATION_LABELS[meal_photo.ERR_MEAL_PHOTO_COUNT_INVALID],
+            "total_too_large_label": lb.LIMITATION_LABELS[meal_photo.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE],
             "content_type": meal_photo.MEAL_PHOTO_CONTENT_TYPE,
             "resize_max_edge_px": label_photo.RESIZE_MAX_EDGE_PX,
             "resize_quality": label_photo.RESIZE_JPEG_QUALITY,

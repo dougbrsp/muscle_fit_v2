@@ -720,9 +720,9 @@ export type MealParseResult = {
   engine_version: string;
 };
 
-/** `POST /nutrition/meals/photo` (`MealPhotoUploadIn`, L10): foto reduzida em base64 sem padding. */
+/** `POST /nutrition/meals/photo` (`MealPhotoUploadIn`, L10): fotos reduzidas (1 a `MEAL_PHOTO.images_per_reading`) em base64 sem padding. */
 export type MealPhotoPayload = {
-  image_base64: string;
+  images_base64: string[];
   local_date: string;
   meal_slot: NutritionCode | null;
   user_id?: number | null;
@@ -742,6 +742,8 @@ export type MealPhotoResult = Omit<MealParseResult, 'items'> & {
   plate_status: NutritionCode;
   /** Principal incerteza da leitura (`MEAL_PHOTO.uncertainties`); ausente na leitura v1. */
   main_uncertainty?: NutritionCode | null;
+  /** Quantas fotos o servidor leu (ausente na leitura antiga: uma). */
+  photos_read?: number;
 };
 
 /** Item da foto: a natureza da proposta (`MEAL_NATURE_OPTIONS`), `null` enquanto a pessoa não escolher.

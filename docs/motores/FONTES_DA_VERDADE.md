@@ -6738,7 +6738,7 @@ Tabela `user_favorite_foods` (migração 102): FK só para `users` (CASCADE); `f
 Decisões do usuário: D1 (Claude Haiku 5.5 com visão e fallback OpenAI) e D11 (10 análises por usuário/dia).
 
 **Dono novo.** `domain/nutrition/meal_photo.py` (Python puro, sem relógio): `MEAL_PHOTO_S3_PREFIX`, `MEAL_PHOTO_RETENTION_DAYS`
-(1 d, espelho da regra `nutrition-meals-expire-1d`, paridade; o plano §9 c dizia 30, reduzido na revisão do lote porque a foto só é lida uma vez), `MEAL_PHOTO_IMAGES_PER_READING`, `meal_photo_key`,
+(1 d, espelho da regra `nutrition-meals-expire-1d`, paridade; o plano §9 c dizia 30, reduzido na revisão do lote porque a foto só é lida uma vez), `MEAL_PHOTO_IMAGES_PER_READING` (1 no L10; 3 desde #325, §80.1), `meal_photo_key`,
 `is_meal_photo_key_of`, `PlateStatus`, `review_reading` e `item_nature`. O transporte (limite, JPEG, base64 sem padding,
 redução, `detail`) continua em `label_photo`: `MEAL_PHOTO_MAX_BYTES`, `MEAL_PHOTO_CONTENT_TYPE` e `MEAL_IMAGE_DETAIL` são
 apelidos de lá, e `decode_upload`/`upload_error` só traduzem o código, porque o texto do erro não pode falar de rótulo.
@@ -6852,6 +6852,28 @@ aceita espaço em qualquer posição e atributos (`</dados_do_usuario foo>`, `<d
 efeito vale para TODAS as features que usam `sanitize_user_text` (ex.: º→o, ²→2, ½→1⁄2, ™→TM, emojis compostos desfeitos), na forma
 NFKC. Sem medição por feature: o texto do usuário não é gravado em `ai_usage_log`, então não há base de produção para medir; risco
 aceito pelo ganho de segurança.
+
+**Várias fotos da mesma refeição (issue #325, 2026-11-26, decisão do usuário).** Dono `meal_photo`:
+`MEAL_PHOTO_IMAGES_PER_READING` passa de 1 para 3 e nasce `MEAL_PHOTO_TOTAL_MAX_BYTES` (`MEAL_PHOTO_TOTAL_MAX_MIB` = 3 MiB, soma dos
+bytes decodificados de uma leitura): em base64 isso dá 4 MiB, com cerca de 2 MiB de folga para o JSON e o envelope do evento no
+limite de 6 MiB do payload síncrono da Lambda api-core (3 fotos no teto individual de 1,5 MiB dariam 6 MiB de base64 e
+estourariam). `upload_texts(image_base64, images_base64)` aceita o campo antigo (uma foto) OU a lista (1..3); os dois, nenhum ou
+quantidade fora dá `ERR_MEAL_PHOTO_COUNT_INVALID` (400); `total_size_error` dá `ERR_MEAL_PHOTO_TOTAL_TOO_LARGE` (413). Tudo antes
+da cota, sem eco do base64 (sem `max_length` no Pydantic). Cada foto segue conferida por `decode_upload`/`upload_error`.
+**Cota:** a leitura inteira conta 1 (uma linha em `ai_usage_log`; `image_count` registra quantas fotos). **S3:** uma chave
+`meal_photo_key` por foto, mesma retenção; o registro do job e o evento levam `s3_keys` (lista). O worker aceita `s3_keys` e
+também o `s3_key` antigo (job em voo no deploy); toda chave é conferida por `is_meal_photo_key_of` e a quantidade pelo dono antes
+de ler qualquer foto; o teto somado é conferido de novo no worker. `read_meal_photo` recebe a lista (bytes soltos valem como uma
+foto) e manda um `ImageInput` por foto numa chamada só (Claude e fallback OpenAI). Prompt `nutrition-photo-v3` (v2 preservado),
+com `fotos_max` interpolado do dono. `job_result` ganha `photos_read`. Espelho, bloco `meal_photo`: `images_per_reading`,
+`total_max_bytes`, `count_invalid_label`, `total_too_large_label`. Impacto em produção: sem migração e sem Terraform; cliente
+antigo (`image_base64`) segue igual; o resultado do job ganha uma chave (aditivo). Com até 3 imagens, os tokens de entrada por
+leitura crescem (cerca de uma imagem a mais por foto). Linha de base de 1 foto, medida em 26/11/2026 (SELECT em `ai_usage_log`,
+`meal_photo`, 30 dias): 3 leituras, 1 usuário, todas com sucesso, média de 3.459 tokens de entrada e 2.106 de saída, cerca de
+25 s, US$ 0,0042. O caso de 3 fotos fica sem medição até depois da promoção; acompanhar `tokens_in` e a duração em
+`ai_usage_log`. Compatibilidade do deploy: a api-core atualiza antes da plan-generator, então o evento leva `s3_key` (= `s3_keys[0]`)
+junto com `s3_keys`; o worker antigo lê só a 1ª foto (degradação aceita na janela) em vez de falhar com `key_invalid`. Pendência: a
+guarda `foto_prato_nutricao` ainda não lista `MEAL_PHOTO_TOTAL_MAX_BYTES`/`_MIB`.
 
 
 ## 81. Nutrição N2 — plano autogerido (2026-11-02)

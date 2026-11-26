@@ -1608,6 +1608,10 @@
     },
     "meal_photo": {
       "max_bytes": 1572864,
+      "images_per_reading": 3,
+      "total_max_bytes": 3145728,
+      "count_invalid_label": "Envie de 1 a 3 fotos da mesma refeição.",
+      "total_too_large_label": "As fotos juntas passam de 3 MB. Envie menos fotos ou tire outras.",
       "content_type": "image/jpeg",
       "resize_max_edge_px": 1280,
       "resize_quality": 0.85,

@@ -56,6 +56,8 @@ beforeAll(() => {
     removeEventListener() {},
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
+  URL.createObjectURL = () => 'blob:miniatura';
+  URL.revokeObjectURL = () => {};
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver ||= class {
     observe() {}
     unobserve() {}
@@ -106,18 +108,32 @@ const campo = (rotulo: string) =>
     (Array.from(document.querySelectorAll('label')).find((l) => l.textContent?.startsWith(rotulo)) as HTMLLabelElement).htmlFor,
   ) as HTMLInputElement & HTMLTextAreaElement;
 
-async function enviar(arquivo: File) {
+async function juntar(...arquivos: File[]) {
   const entrada = document.querySelector('input[type="file"]') as HTMLInputElement;
-  Object.defineProperty(entrada, 'files', { value: [arquivo], configurable: true });
+  Object.defineProperty(entrada, 'files', { value: arquivos, configurable: true });
   await act(async () => {
     entrada.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+const botaoPorTexto = (t: string) => Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes(t)) as HTMLButtonElement;
+const miniaturas = () => document.querySelectorAll('[role="listitem"] img');
+
+async function analisar() {
+  await act(async () => {
+    botaoPorTexto('Analisar').click();
     await new Promise((r) => setTimeout(r, 50));
   });
 }
 
+async function enviar(...arquivos: File[]) {
+  await juntar(...arquivos);
+  await analisar();
+}
+
 describe('foto do prato: descrição e peso total opcionais', () => {
   it('sem preencher, o contexto é o de sempre e o limite da descrição é o do espelho', async () => {
-    readMealPhoto.mockResolvedValue({ result: RESULTADO, photo: new Blob(['x']) });
+    readMealPhoto.mockResolvedValue({ result: RESULTADO, photos: [new Blob(['x'])] });
     await abrir();
     expect(campo('Descreva a refeição').maxLength).toBe(MEAL_PHOTO.description_max_chars);
     await enviar(new File(['a'], 'a.jpg'));
@@ -125,7 +141,7 @@ describe('foto do prato: descrição e peso total opcionais', () => {
   });
 
   it('preenchidos, descrição (sem espaços nas pontas) e peso vão no contexto', async () => {
-    readMealPhoto.mockResolvedValue({ result: RESULTADO, photo: new Blob(['x']) });
+    readMealPhoto.mockResolvedValue({ result: RESULTADO, photos: [new Blob(['x'])] });
     await abrir();
     await digitar(campo('Descreva a refeição'), '  arroz e frango ');
     await digitar(campo('Peso total'), '450');
@@ -157,7 +173,7 @@ describe('foto do prato: o modal entrega a versão reduzida', () => {
   it('onParsed recebe o formulário com a foto reduzida, nunca o arquivo original', async () => {
     const original = new File(['cru-12MB'], 'prato.jpg', { type: 'image/jpeg' });
     const reduzida = new Blob(['jpeg-reduzido'], { type: 'image/jpeg' });
-    readMealPhoto.mockResolvedValue({ result: RESULTADO, photo: reduzida });
+    readMealPhoto.mockResolvedValue({ result: RESULTADO, photos: [reduzida] });
     const onParsed = vi.fn();
 
     host = document.createElement('div');
@@ -178,19 +194,71 @@ describe('foto do prato: o modal entrega a versão reduzida', () => {
       );
     });
 
-    const entrada = document.querySelector('input[type="file"]') as HTMLInputElement;
-    Object.defineProperty(entrada, 'files', { value: [original], configurable: true });
-    await act(async () => {
-      entrada.dispatchEvent(new Event('change', { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 50));
-    });
+    await enviar(original);
 
-    expect(readMealPhoto.mock.calls[0][0]).toBe(original);
+    expect(readMealPhoto.mock.calls[0][0]).toEqual([original]);
     expect(onParsed).toHaveBeenCalledTimes(1);
     const form = onParsed.mock.calls[0][0];
-    expect(form.photo).toBe(reduzida);
-    expect(form.photo).not.toBe(original);
+    expect(form.photos).toEqual([reduzida]);
+    expect(form.photos[0]).not.toBe(original);
     // Depois do sucesso, nenhuma mutação guardada (cache/observador) segue referenciando o arquivo original.
     expect(client.getMutationCache().getAll().some((m) => m.state.variables === original)).toBe(false);
+  });
+});
+
+describe('foto do prato: até MEAL_PHOTO.images_per_reading fotos numa leitura', () => {
+  const arq = (n: number) => Array.from({ length: n }, (_, i) => new File([String(i)], `f${i}.jpg`, { type: 'image/jpeg' }));
+
+  it('galeria aceita seleção múltipla; Analisar fica desabilitado sem fotos', async () => {
+    await abrir();
+    expect((document.querySelector('input[type="file"]') as HTMLInputElement).multiple).toBe(true);
+    expect(botaoPorTexto('Analisar').disabled).toBe(true);
+  });
+
+  it('1, 2 e 3 fotos: miniaturas e envio de todas numa chamada só', async () => {
+    for (const n of [1, 2, 3]) {
+      readMealPhoto.mockResolvedValue({ result: RESULTADO, photos: [new Blob(['x'])] });
+      await abrir();
+      const files = arq(n);
+      await juntar(...files);
+      expect(miniaturas()).toHaveLength(n);
+      await analisar();
+      expect(readMealPhoto).toHaveBeenCalledTimes(1);
+      expect(readMealPhoto.mock.calls[0][0]).toEqual(files);
+      await act(async () => root?.unmount());
+      root = null;
+      host.remove();
+      document.body.innerHTML = '';
+      vi.clearAllMocks();
+    }
+  });
+
+  it('limite: passando do teto, só as primeiras entram e adicionar fica desabilitado', async () => {
+    await abrir();
+    await juntar(...arq(MEAL_PHOTO.images_per_reading + 2));
+    expect(miniaturas()).toHaveLength(MEAL_PHOTO.images_per_reading);
+    expect(botaoPorTexto('Adicionar da galeria').disabled).toBe(true);
+    expect(botaoPorTexto('Adicionar outra foto').disabled).toBe(true);
+  });
+
+  it('remover miniatura tira só aquela e libera adicionar', async () => {
+    await abrir();
+    const files = arq(MEAL_PHOTO.images_per_reading);
+    await juntar(...files);
+    await act(async () => {
+      (document.querySelector('[aria-label="Remover foto 1"]') as HTMLButtonElement).click();
+    });
+    expect(miniaturas()).toHaveLength(MEAL_PHOTO.images_per_reading - 1);
+    expect(botaoPorTexto('Adicionar outra foto').disabled).toBe(false);
+    readMealPhoto.mockResolvedValue({ result: RESULTADO, photos: [new Blob(['x'])] });
+    await analisar();
+    expect(readMealPhoto.mock.calls[0][0]).toEqual(files.slice(1));
+  });
+
+  it('soma acima do teto: o rótulo do espelho aparece e nada é aceito como sucesso', async () => {
+    readMealPhoto.mockRejectedValue(new Error(MEAL_PHOTO.total_too_large_label));
+    await abrir();
+    await enviar(...arq(2));
+    expect(document.body.textContent).toContain(MEAL_PHOTO.total_too_large_label);
   });
 });
