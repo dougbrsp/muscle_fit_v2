@@ -164,6 +164,12 @@ describe('editor de refeição: layout do item', () => {
     await aguardar(opcao);
     await act(async () => { opcao()!.click(); });
     await aguardar(() => host.querySelector('[data-testid="item-busca-catalogo"]'));
+    const grupo = host.querySelector('[data-testid="item-busca-catalogo"]')!;
+    expect(grupo.getAttribute('role')).toBe('group');
+    expect(grupo.getAttribute('aria-label')).toMatch(/^Buscar alimento para substituir/);
+    const lixeira = host.querySelector('[aria-label="Remover Arroz cozido"]') as HTMLElement;
+    expect(lixeira.style.minHeight).toBe('44px');
+    expect(lixeira.style.minWidth).toBe('44px');
     await act(async () => { (host.querySelector('[data-testid="item-busca-catalogo"] button') as HTMLElement).click(); }); // a busca do item, não a do editor
     await aguardar(() => !host.querySelector('[data-testid="item-busca-catalogo"]'));
 

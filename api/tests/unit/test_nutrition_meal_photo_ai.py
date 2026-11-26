@@ -525,8 +525,9 @@ def test_job_antigo_com_s3_key_continua_lendo_uma_foto(monkeypatch, uso):
         [],
         [CHAVE] * (meal_photo.MEAL_PHOTO_IMAGES_PER_READING + 1),
         CHAVE,  # string no lugar da lista
+        [CHAVE, CHAVE],  # chave duplicada
     ],
-    ids=["outro_usuario", "vazia", "acima_do_dono", "nao_lista"],
+    ids=["outro_usuario", "vazia", "acima_do_dono", "nao_lista", "duplicada"],
 )
 def test_job_recusa_chaves_invalidas_antes_de_ler_qualquer_foto(monkeypatch, uso, chaves):
     lidas = _foto(monkeypatch)

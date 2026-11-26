@@ -15,6 +15,7 @@ import {
   CATALOG_ITEM_NATURE,
   ESTIMATE_ITEM_NATURE,
   MEAL_NATURE_OPTIONS,
+  FOOD_BASIS_OPTIONS,
   MEAL_PHOTO,
   PORTION_UNITS,
   nutritionLabel,
@@ -66,11 +67,11 @@ export type MealEditorItem = {
   notices: NutritionLimitation[];
   /** Lançamento rápido gravado: os 5 valores editáveis (sem busca, porção, unidade nem peso). */
   quick?: QuickEntryDraft | null;
-  /** Evidência/faixa/incerteza do peso que a foto do prato (v2) entregou; só exibição, nunca vai à API. */
   /** Alimento (`food_id`) antes da primeira troca pela pessoa; `undefined` = nunca trocou. Só para a evidência da foto. */
   originalFoodId?: number | null;
   /** Alimentos que a pessoa buscou no catálogo para este item (opções extras do seletor); só no cliente. */
   searchedFoods?: SearchedFood[];
+  /** Evidência/faixa/incerteza do peso que a foto do prato (v2) entregou; só exibição, nunca vai à API. */
   photoMeta?: { evidence: NutritionCode | null; gramsLow: number | null; gramsHigh: number | null; uncertainty: NutritionCode | null } | null;
 };
 
@@ -218,7 +219,9 @@ export function chooseCandidate(item: MealEditorItem, candidate: MealParseCandid
  * como `editorItemFromFood`. O alimento entra nas opções do seletor (sem nota de casamento: escolha da pessoa). */
 export function chooseCatalogFood(item: MealEditorItem, food: SearchedFood): MealEditorItem {
   const padrao = editorItemFromFood(food, item.key);
-  const mantem = !unitUsesPortion(item.unit);
+  const unidadeEhBase = FOOD_BASIS_OPTIONS.some((o) => o.value === item.unit);
+  // g ↔ ml: a quantidade em outra base não vale para o alimento novo.
+  const mantem = !unitUsesPortion(item.unit) && !(unidadeEhBase && item.unit !== food.basis);
   const jaListado = item.choices.some((c) => c.food_id === food.id) || (item.searchedFoods ?? []).some((f) => f.id === food.id);
   return {
     ...item,
@@ -233,7 +236,9 @@ export function chooseCatalogFood(item: MealEditorItem, food: SearchedFood): Mea
     portion_id: null,
     matchConfidence: null,
     originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, CATALOG_ITEM_NATURE),
-    searchedFoods: jaListado ? item.searchedFoods : [
+    searchedFoods: jaListado
+      ? item.searchedFoods
+      : [
           ...(item.searchedFoods ?? []),
           { id: food.id, name: food.name, basis: food.basis, default_portion: food.default_portion, brand: food.brand ?? null },
         ],

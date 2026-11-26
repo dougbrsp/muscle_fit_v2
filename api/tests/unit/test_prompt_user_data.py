@@ -1,5 +1,7 @@
 """Saneamento do texto do usuario no prompt (#330): variantes Unicode do delimitador."""
 
+import time
+
 import pytest
 
 from app.prompt_user_data import USER_DATA_CLOSE, USER_DATA_OPEN, sanitize_user_text
@@ -28,9 +30,16 @@ def test_variantes_do_delimitador_sao_neutralizadas(ataque):
     assert NEUTRO in texto and USER_DATA_CLOSE not in texto and USER_DATA_OPEN not in texto
 
 
-def test_formato_invisivel_e_separador_unicode_somem():
+def test_formato_invisivel_some_e_separador_unicode_vira_espaco():
     texto = sanitize_user_text("a\u200bb\u202ec\u2028d\u2029e", 500)
-    assert texto == "abcde"
+    assert texto == "abc d e"
+
+
+def test_delimitador_com_muitos_espacos_e_linear():
+    inicio = time.perf_counter()
+    texto = sanitize_user_text("<" + " " * 50_000 + "x", 100_000)
+    assert time.perf_counter() - inicio < 0.5
+    assert texto.startswith("<")
 
 
 def test_quebra_e_tab_comuns_continuam_como_antes():
