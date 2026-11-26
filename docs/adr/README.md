@@ -56,5 +56,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0034](0034-prioridade-do-dia-no-diario-da-nutricao.md) | Prioridade nutricional do dia no diário da nutrição, no dono do ciclo; `nutrition-v6` (issue #272) | Aceita | 2026-11-22 |
 | [0035](0035-receitas-como-alimento-composto.md) | Receitas como alimento composto (`source='recipe'`), com motor próprio e migração 125; primeira fatia do backend (issue #286) | Aceita | 2026-11-23 |
 | [0036](0036-perfis-de-resistencia-do-par-exercicio-equipamento.md) | Perfis de resistência do par exercício+equipamento, com vocabulário controlado e revisão humana; fatia 1, parte A (migração 126, issue #288) | Aceita | 2026-11-23 |
+| [0037](0037-foto-do-prato-v2-evidencia-por-item.md) | Foto do prato v2, com dicas da pessoa e evidência por item (issue #323, fase A) | Aceita | 2026-11-26 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

@@ -140,6 +140,10 @@ describe('MealEditor: quantidade confirmada só no blur', () => {
     await esperar();
     expect(previewMeal).toHaveBeenCalledTimes(1);
     expect(host.querySelector('[data-testid="motor"]')).not.toBeNull();
+    const bloco = host.querySelector('[aria-busy="true"]') as HTMLElement;
+    expect(bloco).not.toBeNull();
+    expect(bloco.style.opacity).toBe('0.7');
+    expect(bloco.querySelector('[role="status"]')?.textContent).toBe('Recalculando…');
   });
 
   it('salvar com o campo ainda em foco envia a quantidade final', async () => {
@@ -300,7 +304,10 @@ describe('MealEditor: quantidade confirmada só no blur', () => {
     await focar(el);
     await digitar(el, '333');
     await desfocar(campo());
-    await esperar();
+    // Espera o preview disparar (atraso interno do componente) em vez de um sleep fixo.
+    // (cada passo roda dentro de act: o debounce só dispara quando o React aplica as atualizações)
+    for (let i = 0; i < 60 && previewMeal.mock.calls.length === 0; i++) await esperar(50);
+    await esperar(50);
     expect(previewMeal).toHaveBeenCalledTimes(1);
     expect(campo().value).toBe('333');
   });

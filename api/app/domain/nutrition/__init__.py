@@ -383,6 +383,8 @@ def export_for_frontend() -> dict[str, Any]:
             "evidences": _codes(meal_photo.ItemEvidence),
             "evidence_labels": lb.labels_by_code(lb.MEAL_PHOTO_EVIDENCE_LABELS),
             "uncertainties": _codes(meal_photo.Uncertainty),
+            # Código de "sem incerteza" (a tela não mostra aviso para ele).
+            "uncertainty_none": meal_photo.Uncertainty.NONE.value,
             "uncertainty_labels": lb.labels_by_code(lb.MEAL_PHOTO_UNCERTAINTY_LABELS),
         },
         "label_legibilities": _codes(label_photo.LabelLegibility),

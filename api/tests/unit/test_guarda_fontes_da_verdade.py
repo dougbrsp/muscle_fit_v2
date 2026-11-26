@@ -1650,8 +1650,11 @@ PADROES: tuple[Padrao, ...] = (
         # `label_photo`. O IAM e o lifecycle do prefixo (`.tf`, que a guarda não varre)
         # têm teste de paridade; o id da regra (`nutrition-meals-expire-1d`) não casa.
         regex=re.compile(
-            r"\b(?:MEAL_PHOTO_(?:MAX_BYTES|CONTENT_TYPE|S3_PREFIX|RETENTION_DAYS|IMAGES_PER_READING)|MEAL_IMAGE_DETAIL)"
-            r"""\s*(?::[^=\n]+)?=\s*(?:[\d(\[{"'`]|(?:int|float|Number)\(|frozenset|new Set|label_photo\.)"""
+            # #330: as dicas da pessoa e o item editado (#323) também são do dono.
+            r"\b(?:MEAL_PHOTO_(?:MAX_BYTES|CONTENT_TYPE|S3_PREFIX|RETENTION_DAYS|IMAGES_PER_READING|DESCRIPTION_MAX_CHARS"
+            r"|TOTAL_GRAMS_(?:MIN|MAX|TOLERANCE)|EDITED_ITEM_\w+)|MEAL_IMAGE_DETAIL|PHOTO_UNCERTAINTY_NONE)"
+            r"""\s*(?::[^=\n]+)?=\s*(?:[\d(\[{"'`]|(?:int|float|Number)\(|frozenset|new Set|label_photo\."""
+            r"""|ItemEvidence\.|(?:True|False|true|false)\b)"""
             r"""|["'`]nutrition-meals(?=[/"'`])"""
         ),
         donos=("api/app/domain/nutrition/meal_photo.py",),
@@ -3888,8 +3891,16 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ('MEAL_PHOTO_S3_PREFIX = "nutrition-meals"', "MEAL_PHOTO_RETENTION_DAYS: int = 30",
          "MEAL_PHOTO_MAX_BYTES = 1572864", "MEAL_PHOTO_MAX_BYTES = label_photo.LABEL_PHOTO_MAX_BYTES",
          'MEAL_IMAGE_DETAIL = "high"', 'key = f"nutrition-meals/{user_id}/{uuid4().hex}.jpg"',
-         "const prefixo = `nutrition-meals/${id}`;", 'PREFIX = "nutrition-meals"'),
+         "const prefixo = `nutrition-meals/${id}`;", 'PREFIX = "nutrition-meals"',
+         "MEAL_PHOTO_DESCRIPTION_MAX_CHARS: Final[int] = 500", "const MEAL_PHOTO_TOTAL_GRAMS_MIN = 1;",
+         "MEAL_PHOTO_TOTAL_GRAMS_MAX = 5000", "MEAL_PHOTO_TOTAL_GRAMS_TOLERANCE: float = 0.10",
+         "MEAL_PHOTO_EDITED_ITEM_EVIDENCE = ItemEvidence.USER_INFORMED",
+         'MEAL_PHOTO_EDITED_ITEM_EVIDENCE = "user_informed"', "MEAL_PHOTO_EDITED_ITEM_KEEPS_RANGE: Final[bool] = False",
+         "const MEAL_PHOTO_EDITED_ITEM_KEEPS_RANGE = false;", 'const PHOTO_UNCERTAINTY_NONE = "none";'),
         ("chave = meal_photo.meal_photo_key(usuario, uuid.uuid4().hex)", "if dados > meal_photo.MEAL_PHOTO_MAX_BYTES:",
+         "if len(texto) > meal_photo.MEAL_PHOTO_DESCRIPTION_MAX_CHARS:",
+         "const MEAL_PHOTO_TOTAL_GRAMS_MAX = MEAL_PHOTO.total_grams_max;",
+         "keepsRange: MEAL_PHOTO.edited_item_keeps_range,",
          "maxEdge: MEAL_PHOTO.resize_max_edge_px,", 'id = "nutrition-meals-expire-1d"', "/nutrition/meals/photo",
          "ContentType=meal_photo.MEAL_PHOTO_CONTENT_TYPE"),
     ),

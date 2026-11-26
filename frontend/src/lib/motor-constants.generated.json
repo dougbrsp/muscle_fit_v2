@@ -1641,6 +1641,7 @@
         "identity",
         "inedible_parts"
       ],
+      "uncertainty_none": "none",
       "uncertainty_labels": {
         "none": "Sem incerteza relevante",
         "hidden_portion": "Parte do alimento está coberta",

@@ -87,6 +87,10 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
     resolve_target_user(identity, permissoes, "nutricao.diario", "editar", payload.user_id)
     solicitante = int(identity.user_id)
 
+    # Dicas da pessoa (#323) antes da imagem: o erro só leva o código, nunca o texto da descrição.
+    erro = meal_photo.user_hints_error(payload.description, payload.total_grams)
+    if erro:
+        raise _error(400, erro)
     dados, erro = meal_photo.decode_upload(payload.image_base64)
     dados = dados or b""
     erro = erro or meal_photo.upload_error(len(dados), sniff_image_content_type(dados[:label_photo.PHOTO_SNIFF_BYTES]))
@@ -95,10 +99,6 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
     slot = diary.normalize_meal_slot(payload.meal_slot)
     if payload.meal_slot is not None and slot is None:
         raise _error(400, diary.ERR_INVALID_MEAL_SLOT)
-    # Dicas da pessoa (#323): o erro só leva o código, nunca o texto da descrição.
-    erro = meal_photo.user_hints_error(payload.description, payload.total_grams)
-    if erro:
-        raise _error(400, erro)
     descricao = meal_photo.normalize_description(payload.description)
 
     # Antes de gastar a cota: o catálogo e o diário existem e o aluno existe.
