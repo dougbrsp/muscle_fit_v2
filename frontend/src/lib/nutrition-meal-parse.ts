@@ -43,10 +43,21 @@ export function editorFormFromPhoto(result: MealPhotoResult, context: { date: st
     photo,
     // Selo pela natureza que o motor propôs; sem ela (escolha pendente), o estado do casamento.
     items: form.items.map((item, indice) => {
-      const natureza = result.items[indice].nature;
-      return natureza ? { ...item, originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, natureza) } : item;
+      const lido = result.items[indice];
+      const comOrigem = lido.nature ? { ...item, originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, lido.nature) } : item;
+      // Leitura v1 (sem os campos): nada de metadado, o item renderiza como antes.
+      if (lido.evidence == null && lido.grams_low == null && lido.grams_high == null && lido.uncertainty == null) return comOrigem;
+      return {
+        ...comOrigem,
+        photoMeta: {
+          evidence: lido.evidence ?? null,
+          gramsLow: lido.grams_low ?? null,
+          gramsHigh: lido.grams_high ?? null,
+          uncertainty: lido.uncertainty ?? null,
+        },
+      };
     }),
-    ai: form.ai ? { ...form.ai, ai_source: MEAL_PHOTO.meal_source } : null,
+    ai: form.ai ? { ...form.ai, ai_source: MEAL_PHOTO.meal_source, mainUncertainty: result.main_uncertainty ?? null } : null,
   };
 }
 

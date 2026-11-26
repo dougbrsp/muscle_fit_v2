@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 
 import pytest
 from fastapi import FastAPI
@@ -161,7 +162,7 @@ def test_upload_despacha_na_ordem_do_contrato_e_responde_202(monkeypatch):
     _, env, evento = despacho.eventos[4]
     assert env == "PLAN_GENERATOR_FUNCTION_NAME"
     assert evento == {"job_id": "job-1", "job_kind": MEAL_PHOTO_JOB_TYPE, "user_id": USUARIO, "ai_usage_id": 55,
-                      "s3_key": CHAVE, "payload": {**pedido, "job_id": "job-1"}}
+                      "s3_key": CHAVE, "payload": {**pedido, "job_id": "job-1", "description": None, "total_grams": None}}
 
 
 def test_terceiro_exige_admin_ou_pt_antes_de_qualquer_coisa(monkeypatch):
@@ -335,3 +336,41 @@ def test_armazenamento_traduz_as_falhas_para_o_codigo_do_motor(monkeypatch):
     with pytest.raises(storage.MealPhotoStorageError) as exc:
         storage.put_meal_photo(USUARIO, JPEG, client=_s3("x"))
     assert exc.value.code == meal_photo.ERR_MEAL_PHOTO_STORAGE_FAILED
+
+
+def test_dicas_vao_so_no_payload_do_evento_normalizadas(monkeypatch, caplog):
+    despacho = _Despacho(monkeypatch)
+    with caplog.at_level(logging.DEBUG):
+        resposta = _enviar(_client(), description="  sem molho SEGREDO-123  ", total_grams=300)
+    assert resposta.status_code == 202, resposta.text
+    _, _, gravado, _ = despacho.eventos[2]
+    assert "description" not in gravado and "total_grams" not in gravado
+    payload = despacho.eventos[4][2]["payload"]
+    assert payload["description"] == "sem molho SEGREDO-123" and payload["total_grams"] == 300
+    fora_do_evento = [e for i, e in enumerate(despacho.eventos) if i != 4]
+    assert "SEGREDO-123" not in json.dumps(fora_do_evento, default=str)
+    assert "SEGREDO-123" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("extra", "codigo"),
+    [
+        ({"description": "SEGREDO" * 200}, meal_photo.ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG),
+        ({"description": "x" * (meal_photo.MEAL_PHOTO_DESCRIPTION_MAX_CHARS + 1)}, meal_photo.ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG),
+        ({"total_grams": 0}, meal_photo.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+        ({"total_grams": -5}, meal_photo.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+        ({"total_grams": meal_photo.MEAL_PHOTO_TOTAL_GRAMS_MAX + 1}, meal_photo.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+    ],
+    ids=["descricao_longa", "descricao_no_limite_mais_um", "zero", "negativo", "acima_do_teto"],
+)
+def test_dicas_invalidas_dao_400_antes_da_cota_sem_eco_do_texto(monkeypatch, extra, codigo):
+    despacho = _Despacho(monkeypatch)
+    resposta = _enviar(_client(), **extra)
+    assert resposta.status_code == 400 and resposta.json()["detail"]["error"] == codigo
+    assert "SEGREDO" not in resposta.text
+    assert despacho.eventos == []
+
+
+def test_description_que_nao_e_string_da_422_sem_ecoar_string_legitima():
+    resposta = _enviar(_client(), description=123)
+    assert resposta.status_code == 422

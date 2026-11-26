@@ -18,7 +18,7 @@ import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, StringConstraints, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
 from .domain.resistance_profile import SUGGEST_MAX_PAIRS_PER_REQUEST
@@ -494,12 +494,19 @@ class MealPhotoUploadIn(_StrictIn):
     """POST /nutrition/meals/photo (nutrição L10): a foto do prato JÁ REDUZIDA pela
     tela (JPEG do canvas) em base64 sem padding, o dia e a refeição (opcional).
     Tamanho, alfabeto, tipo e slot NÃO são validados aqui: os códigos e os status
-    são do motor (`meal_photo.decode_upload`, `upload_error`, `diary`)."""
+    são do motor (`meal_photo.decode_upload`, `upload_error`, `diary`).
+    `description` e `total_grams` (#323): dicas opcionais da pessoa; teto e faixa
+    são do motor (`meal_photo.user_hints_error`, 400 antes da cota). Ausentes =
+    cliente antigo, mesmo fluxo."""
 
     user_id: Optional[int] = None
     image_base64: str
     local_date: date
     meal_slot: Optional[str] = Field(default=None, max_length=24)
+    # Sem `max_length` aqui: o 422 do Pydantic ecoa o `input`, e a descrição nunca vai
+    # para erro; o teto é do motor (400 só com o código).
+    description: Optional[StrictStr] = None
+    total_grams: Optional[StrictInt] = None
 
 
 class MealPreviewIn(MealIn):

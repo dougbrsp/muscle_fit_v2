@@ -26,7 +26,17 @@ import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { QuickEntryItemRow } from './QuickEntryItemRow';
 import { useScannerOpen } from '@/lib/barcode-scanner-open';
-import { MEAL_ITEMS_LIMIT, MEAL_ITEM_LOW_CONFIDENCE_NOTICE, MEAL_SLOT_OPTIONS, UNIT_OPTIONS, nutritionNotice } from '@/lib/nutrition-constants';
+import {
+  MEAL_ITEMS_LIMIT,
+  MEAL_ITEM_LOW_CONFIDENCE_NOTICE,
+  MEAL_PHOTO_EVIDENCE_OPTIONS,
+  MEAL_PHOTO_UNCERTAINTY_OPTIONS,
+  MEAL_SLOT_OPTIONS,
+  PHOTO_UNCERTAINTY_NONE,
+  UNIT_OPTIONS,
+  nutritionLabel,
+  nutritionNotice,
+} from '@/lib/nutrition-constants';
 import {
   createMeal,
   fetchFood,
@@ -50,6 +60,7 @@ import {
   mealCreatePayload,
   mealPreviewPayload,
   mealPayload,
+  photoMetaView,
   quantidade,
   unitUsesPortion,
   type MealEditorForm,
@@ -176,6 +187,7 @@ function ItemRow({
     onChange({ ...item, quantity: valor });
   }
   if (item.quick) return <QuickEntryItemRow item={item} draft={item.quick} onChange={onChange} onRemove={onRemove} />;
+  const meta = photoMetaView(item);
   const daLeitura = item.choices.length > 0 || (item.id === null && item.estimate !== null);
   // Item estimado não tem porção: só g, ml e medidas caseiras (a API confere de novo).
   const unidades = item.food_id == null ? UNIT_OPTIONS.filter((opcao) => !unitUsesPortion(opcao.value)) : UNIT_OPTIONS;
@@ -253,6 +265,25 @@ function ItemRow({
           <IconTrash size={16} />
         </ActionIcon>
       </Group>
+      {meta && (
+        <Group gap="xs" data-testid="item-foto-meta" aria-label={`Leitura da foto: ${item.label}`}>
+          {meta.evidence && (
+            <Badge size="xs" variant="outline" color="gray" data-testid="item-evidencia">
+              {nutritionLabel(MEAL_PHOTO_EVIDENCE_OPTIONS, meta.evidence)}
+            </Badge>
+          )}
+          {meta.gramsLow != null && meta.gramsHigh != null && (
+            <Text size="xs" c={BRAND.textMuted} data-testid="item-faixa">
+              {meta.gramsLow}–{meta.gramsHigh} g
+            </Text>
+          )}
+          {meta.uncertainty && meta.uncertainty !== PHOTO_UNCERTAINTY_NONE && (
+            <Text size="xs" c={BRAND.textMuted} data-testid="item-incerteza">
+              {nutritionLabel(MEAL_PHOTO_UNCERTAINTY_OPTIONS, meta.uncertainty)}
+            </Text>
+          )}
+        </Group>
+      )}
       {item.notices.length > 0 && (
         <Text size="xs" c={BRAND.textMuted}>
           {item.notices.map((aviso) => aviso.label).join(' ')}
@@ -472,6 +503,11 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           <Alert color="brand" variant="light" icon={<IconSparkles size={16} />}>
             <Text size="sm">Confira os alimentos e as quantidades antes de salvar.</Text>
             {form.ai.notes && <Text size="sm">{form.ai.notes}</Text>}
+            {form.ai.mainUncertainty && form.ai.mainUncertainty !== PHOTO_UNCERTAINTY_NONE && (
+              <Text size="sm" data-testid="principal-incerteza">
+                Principal incerteza: {nutritionLabel(MEAL_PHOTO_UNCERTAINTY_OPTIONS, form.ai.mainUncertainty)}
+              </Text>
+            )}
             {form.ai.limitations.map((aviso) => (
               <Text key={aviso.code} size="sm">
                 {aviso.label}

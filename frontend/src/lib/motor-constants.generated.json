@@ -1614,7 +1614,42 @@
       "retention_days": 1,
       "retention_label": "1 dia",
       "meal_source": "ai_photo",
-      "quota_exceeded_label": "Limite de 10 análises de foto do prato por dia atingido. Tente de novo amanhã."
+      "quota_exceeded_label": "Limite de 10 análises de foto do prato por dia atingido. Tente de novo amanhã.",
+      "description_max_chars": 500,
+      "total_grams_max": 5000,
+      "total_grams_min": 1,
+      "total_grams_invalid_label": "Informe o peso total da refeição em gramas inteiros, de 1 a 5000 g.",
+      "description_too_long_label": "Descreva a refeição em até 500 caracteres.",
+      "edited_item_evidence": "user_informed",
+      "edited_item_keeps_range": false,
+      "evidences": [
+        "observed",
+        "user_informed",
+        "hypothesis"
+      ],
+      "evidence_labels": {
+        "observed": "Visto na foto",
+        "user_informed": "Informado por você",
+        "hypothesis": "Hipótese da IA"
+      },
+      "uncertainties": [
+        "none",
+        "hidden_portion",
+        "portion_scale",
+        "preparation",
+        "added_fat",
+        "identity",
+        "inedible_parts"
+      ],
+      "uncertainty_labels": {
+        "none": "Sem incerteza relevante",
+        "hidden_portion": "Parte do alimento está coberta",
+        "portion_scale": "Tamanho da porção difícil de avaliar",
+        "preparation": "Preparo incerto (cru ou cozido, pele, caldo)",
+        "added_fat": "Óleo ou gordura do preparo não visível",
+        "identity": "Alimento incerto",
+        "inedible_parts": "Osso, casca ou sobra no peso"
+      }
     },
     "label_legibilities": [
       "ok",

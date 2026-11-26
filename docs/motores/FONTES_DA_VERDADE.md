@@ -6799,6 +6799,47 @@ acerto de alimento e de gramas. O teto de saída herdado também precisa dessa m
 - Dados: nenhuma linha existente muda. As fotos ficam fora da CDN, pelos mesmos motivos do rótulo, e expiram em 1 dia (versão não corrente, mais 1 dia).
 - Reversão: reverter o código é seguro; num rollback, manter a regra de lifecycle até o prefixo esvaziar.
 
+### 80.1 Foto do prato v2: dicas da pessoa e incerteza por item (issue #323 fase A, 2026-11-26)
+
+**Dono (`domain/nutrition/meal_photo.py`).** `MEAL_PHOTO_DESCRIPTION_MAX_CHARS` (500), `MEAL_PHOTO_TOTAL_GRAMS_MAX` (5000 g),
+`MEAL_PHOTO_TOTAL_GRAMS_TOLERANCE` (0,10 do total informado), defaults de desenho sem fonte bibliográfica. `ItemEvidence`
+(`observed`, `user_informed`, `hypothesis`) e `Uncertainty` (lista fechada; `none` incluído). `user_hints_error` (códigos
+`ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG` / `ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID`, só o código, nunca o texto), `normalize_description`,
+`item_detail` (faixa `grams_low`/`grams_high` só vale inteira e com `low <= grams_estimate <= high`; senão é descartada, sem falhar a
+leitura), `total_grams_mismatch` (soma dos itens fora da tolerância vira `LIMIT_TOTAL_GRAMS_MISMATCH`, sem reescalar; item sem gramas
+deixa a soma parcial e não compara). `review_reading(..., total_grams=)` devolve `details` alinhados aos itens e `main_uncertainty`.
+`labels`: `MEAL_PHOTO_EVIDENCE_LABELS`, `MEAL_PHOTO_UNCERTAINTY_LABELS` e os textos dos códigos novos. `export_for_frontend`, bloco
+`meal_photo`: `description_max_chars`, `total_grams_max`, `total_grams_min`, `evidences`/`evidence_labels`,
+`uncertainties`/`uncertainty_labels`, `total_grams_invalid_label`, `description_too_long_label` (interpolam mínimo/máximo das constantes).
+`MEAL_PHOTO_TOTAL_GRAMS_MIN` (1 g) é o piso de `user_hints_error`. Regra de apresentação do dono consumida pelo editor: item cuja
+quantidade/unidade a pessoa alterou passa a ter a evidência `MEAL_PHOTO_EDITED_ITEM_EVIDENCE` (`user_informed`) e, com
+`MEAL_PHOTO_EDITED_ITEM_KEEPS_RANGE` (`False`), perde a faixa de gramas da IA; espelho `edited_item_evidence` e `edited_item_keeps_range`.
+
+**Consumidores.** `MealPhotoUploadIn` ganha `description` e `total_grams` opcionais (sem `max_length` no Pydantic: o 422 ecoa o
+`input`); a rota confere com `user_hints_error` antes da cota (400) e leva as dicas só no evento do invoke (não no registro do job).
+O worker passa as dicas ao prompt e o total ao `review_reading`; `job_result` publica por item `evidence`, `grams_low`, `grams_high`,
+`uncertainty` e, na leitura, `main_uncertainty` (null quando a leitura não trouxe). Os campos novos são opcionais no Pydantic do
+worker: leitura sem eles continua válida. Prompt `nutrition-photo-v2` (v1 preservado): interpola também os valores de
+`ItemEvidence`/`Uncertainty` e `user_data_rule()`; a descrição vai saneada em `<dados_do_usuario>` no fim
+(`nutrition-photo-v2.pedido.md`), prevalece sobre a dedução visual e o texto da imagem segue sem autoridade; o prompt não alega
+consulta a TACO/TBCA/USDA. A tolerância não entra no prompt: quem aponta a divergência é o motor.
+
+**Impacto em produção.** Sem migração e sem Terraform. Cliente antigo (sem os campos) segue o mesmo fluxo; o resultado do job ganha
+chaves novas (aditivo). A descrição não vai para log, `ai_usage_log` nem mensagem de erro.
+
+Medido pelo Tech Lead em 2026-11-26, leitura SELECT no Aurora de produção, tabela `ai_usage_log`, `feature='meal_photo'`, últimos 30
+dias: 3 leituras, 1 usuário, todas `succeeded`, modelo `claude-haiku-5-5`, média de 3.459 tokens de entrada e 2.106 de saída, cerca de
+25,3 s por leitura, custo total US$ 0,0042; primeira em 2026-11-07, última em 2026-11-18; nenhuma falha (sem `reading_invalid`).
+Conclusão: uso muito baixo (só o próprio usuário). O v2 muda a saída da IA (campos novos por item e `main_uncertainty`) e acrescenta
+tokens de saída por item, sem mudar macros (`meal_math`) nem o que é gravado. O aviso de soma divergente só existe quando a pessoa
+informa o peso total, então o impacto é zero para quem não usa os campos. Acompanhar após a promoção, na mesma tabela, a taxa de
+falha por `reading_invalid` e os `tokens_out` por leitura.
+
+**Regra de apresentação consumida pelo editor** (`frontend/src/lib/nutrition-meal-form.ts`, `photoMetaView`): "item editado" =
+quantidade ou unidade diferentes da proposta da leitura; nesse caso o editor aplica `edited_item_evidence` e
+`edited_item_keeps_range` do dono. Trocar o alimento candidato mantendo o peso não conta como edição (comportamento atual). O teste
+que fixa isso é `frontend/src/lib/nutrition-meal-photo-form.test.ts`.
+
 
 ## 81. Nutrição N2 — plano autogerido (2026-11-02)
 

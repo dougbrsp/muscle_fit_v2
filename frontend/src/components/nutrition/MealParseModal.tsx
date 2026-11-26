@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, FileButton, Group, Loader, Modal, Select, Stack, Text, Textarea } from '@mantine/core';
+import { Alert, Button, FileButton, Group, Loader, Modal, NumberInput, Select, Stack, Text, Textarea } from '@mantine/core';
 import { IconAlertTriangle, IconCamera, IconPhoto, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
@@ -68,6 +68,8 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
   const [texto, setTexto] = useState('');
   const [slotTexto, setSlotTexto] = useState<string | null>(null);
   const [slotFoto, setSlotFoto] = useState<string | null>(null);
+  const [descricaoFoto, setDescricaoFoto] = useState('');
+  const [pesoTotal, setPesoTotal] = useState<number | string>('');
   const [stage, setStage] = useState<LabelPhotoStage | null>(null);
   const [semItens, setSemItens] = useState<NutritionLimitation[]>([]);
 
@@ -104,13 +106,25 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
   const lerFoto = useMutation({
     gcTime: 0, // o cache de mutações não guarda o arquivo original (`variables`) depois que o observador solta
     mutationFn: (file: File) =>
-      readMealPhoto(file, { local_date: date, meal_slot: slotFoto }, setStage),
+      readMealPhoto(
+        file,
+        {
+          local_date: date,
+          meal_slot: slotFoto,
+          // Só vão quando preenchidos: vazio = requisição idêntica à de antes.
+          ...(descricaoFoto.trim() ? { description: descricaoFoto.trim() } : {}),
+          ...(gramasValidos(pesoTotal) ? { total_grams: Number(pesoTotal) } : {}),
+        },
+        setStage,
+      ),
     onSuccess: ({ result, photo }) => {
       if (result.items.length === 0) {
         setSemItens(result.limitations);
       } else {
         onParsed(editorFormFromPhoto(result, { date, slot: slotFoto }, photo));
         setSlotFoto(null);
+        setDescricaoFoto('');
+        setPesoTotal('');
       }
       // Solta o arquivo original que a mutação retém em `variables`; no erro não reinicia (a mensagem fica).
       lerFoto.reset();
@@ -159,6 +173,10 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
         <PhotoReading
           slot={slotFoto}
           onSlotChange={setSlotFoto}
+          description={descricaoFoto}
+          onDescriptionChange={setDescricaoFoto}
+          totalGrams={pesoTotal}
+          onTotalGramsChange={setPesoTotal}
           quota={cotaFoto.data ?? null}
           busy={lerFoto.isPending}
           stage={stage}
@@ -224,9 +242,18 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
   );
 }
 
+/** Peso total opcional: vazio é válido (não vai); preenchido precisa ser inteiro positivo até o teto do espelho. */
+function gramasValidos(valor: number | string): boolean {
+  return valor !== '' && Number.isInteger(Number(valor)) && Number(valor) >= MEAL_PHOTO.total_grams_min && Number(valor) <= MEAL_PHOTO.total_grams_max;
+}
+
 type PhotoReadingProps = {
   slot: string | null;
   onSlotChange: (slot: string | null) => void;
+  description?: string;
+  onDescriptionChange?: (texto: string) => void;
+  totalGrams?: number | string;
+  onTotalGramsChange?: (valor: number | string) => void;
   quota: AiQuota | null;
   busy: boolean;
   stage: LabelPhotoStage | null;
@@ -242,10 +269,12 @@ type PhotoReadingProps = {
  * envio (sem EXIF/XMP) e a IA só identifica os alimentos e estima os gramas. Foto sem
  * comida ou não identificada volta com a lista vazia e o motivo, sem abrir o editor.
  */
-export function PhotoReading({ slot, onSlotChange, quota, busy, stage, noItems, error, onPick, onClose }: PhotoReadingProps) {
+export function PhotoReading({ slot, onSlotChange, description = '', onDescriptionChange, totalGrams = '', onTotalGramsChange, quota, busy, stage, noItems, error, onPick, onClose }: PhotoReadingProps) {
   const resetCamera = useRef<() => void>(null);
   const resetGaleria = useRef<() => void>(null);
-  const esgotada = quota ? !quota.allowed : false;
+  const pesoInvalido = totalGrams !== '' && !gramasValidos(totalGrams);
+  const cotaEsgotada = quota ? !quota.allowed : false;
+  const esgotada = cotaEsgotada || pesoInvalido;
 
   function escolher(file: File | null) {
     if (!file) return;
@@ -277,7 +306,31 @@ export function PhotoReading({ slot, onSlotChange, quota, busy, stage, noItems, 
           Análises de foto hoje: {quota.used} de {quota.limit}.
         </Text>
       )}
-      {esgotada && (
+      <Textarea
+        label="Descreva a refeição (opcional)"
+        description="Ajuda a IA a identificar o que está no prato."
+        value={description}
+        onChange={(e) => onDescriptionChange?.(e.currentTarget.value)}
+        maxLength={MEAL_PHOTO.description_max_chars}
+        autosize
+        minRows={2}
+        disabled={busy}
+      />
+      <NumberInput
+        label="Peso total (g) (opcional)"
+        value={totalGrams}
+        onChange={(v) => onTotalGramsChange?.(v)}
+        min={MEAL_PHOTO.total_grams_min}
+        max={MEAL_PHOTO.total_grams_max}
+        clampBehavior="none"
+        allowDecimal={false}
+        allowNegative={false}
+        error={pesoInvalido ? MEAL_PHOTO.total_grams_invalid_label : undefined}
+        inputMode="numeric"
+        w={200}
+        disabled={busy}
+      />
+      {cotaEsgotada && (
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
           {MEAL_PHOTO.quota_exceeded_label}
         </Alert>

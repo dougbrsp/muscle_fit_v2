@@ -95,6 +95,11 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
     slot = diary.normalize_meal_slot(payload.meal_slot)
     if payload.meal_slot is not None and slot is None:
         raise _error(400, diary.ERR_INVALID_MEAL_SLOT)
+    # Dicas da pessoa (#323): o erro só leva o código, nunca o texto da descrição.
+    erro = meal_photo.user_hints_error(payload.description, payload.total_grams)
+    if erro:
+        raise _error(400, erro)
+    descricao = meal_photo.normalize_description(payload.description)
 
     # Antes de gastar a cota: o catálogo e o diário existem e o aluno existe.
     with connect_or_503(get_conn) as conn:
@@ -145,7 +150,8 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
                 "s3_key": chave,
                 # O `job_id` também no payload: o resultado o devolve, e a tela grava a
                 # refeição com ele (`ai_job_id`, origem `ai_photo`).
-                "payload": {**pedido, "job_id": job_id},
+                # As dicas só no evento (não no registro do job): vão até a chamada do modelo.
+                "payload": {**pedido, "job_id": job_id, "description": descricao, "total_grams": payload.total_grams},
             },
         )
     except Exception as exc:  # noqa: BLE001 - invoke falhou: o job nunca vai rodar
