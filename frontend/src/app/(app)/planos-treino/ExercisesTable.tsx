@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionIcon, Autocomplete, Badge, Button, Checkbox, Group, Loader, NumberInput, Table, Text, Textarea, TextInput, Tooltip } from '@mantine/core';
+import { ActionIcon, Autocomplete, Badge, Button, Group, Loader, NumberInput, Table, Text, Textarea, TextInput, Tooltip, VisuallyHidden } from '@mantine/core';
 import type { ComboboxItem, OptionsFilter } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { DragDropContext, Draggable, Droppable, type DropResult } from '@hello-pangea/dnd';
@@ -44,16 +44,36 @@ import { AdvancedConfigModal, type AdvancedConfigPatch } from './AdvancedConfigM
 // "6-10", "10k" em vez de "10kg"). Dimensionadas para o pior caso de cada
 // campo em fonte xs: Séries "20" + spinner, Reps "10-12", Carga "102,5 kg",
 // RPE "9,5"/"10", Descanso "180" + spinner. Se a soma passar do container, o
-// `Table.ScrollContainer` rola na horizontal — a página não.
+// `Table.ScrollContainer` rola na horizontal — a página não. As demais colunas
+// também têm mínimo para nada se sobrepor com muitas linhas ou tela estreita.
 const COL_WIDTH = {
+  order: 112,
+  exercise: 240,
+  group: 140,
   sets: 72,
   reps: 84,
   load: 100,
   rpe: 68,
+  rpeSets: 150,
   rest: 84,
+  advanced: 170,
+  notes: 170,
+  progression: 100,
+  prescription: 190,
+  actions: 44,
 } as const;
 
-const NOWRAP = { whiteSpace: 'nowrap' } as const;
+// Soma das larguras mínimas + respiro do padding: abaixo disso a tabela rola.
+const TABLE_MIN_WIDTH = Object.values(COL_WIDTH).reduce((sum, w) => sum + w, 0) - COL_WIDTH.rpe + 13 * 16;
+
+const TH = {
+  whiteSpace: 'nowrap',
+  verticalAlign: 'bottom',
+  fontSize: 'var(--mantine-font-size-xs)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.03em',
+  color: BRAND.textMuted,
+} as const;
 
 type Props = {
   exercises: WorkoutPlanExercise[];
@@ -202,12 +222,15 @@ export function progressionBadge(progression?: WorkoutPlanExercise['progression'
 export function advancedConfigBadges(exercise: WorkoutPlanExercise) {
   const badges: { key: string; color: string; label: string; tooltip: string }[] = [];
 
-  if (exercise.warmup_sets_count) {
+  // O booleano `warmup` (antes coluna "Aquec.") também acende a badge.
+  if (exercise.warmup_sets_count || exercise.warmup) {
     badges.push({
       key: 'warmup',
       color: 'blue',
       label: 'Aquecimento',
-      tooltip: `${exercise.warmup_sets_count} série(s) x ${exercise.warmup_reps ?? '?'} reps, ${exercise.warmup_rest_seconds ?? '?'}s de descanso`,
+      tooltip: exercise.warmup_sets_count
+        ? `${exercise.warmup_sets_count} série(s) x ${exercise.warmup_reps ?? '?'} reps, ${exercise.warmup_rest_seconds ?? '?'}s de descanso`
+        : 'Aquecimento ligado, sem séries definidas',
     });
   }
   if (exercise.feeler_set_sets_count) {
@@ -417,8 +440,8 @@ export function ExercisesTable({
       const current = exercisesRef.current;
       if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
-      // A sugestão traz o RPE em texto: a lista por série antiga sai (senão a tela mostraria uma e o save enviaria outra).
-      next[index] = { ...next[index], ...patch, rpe_targets_by_set: [], rpe_edited: false };
+      // RPE por série pronto do servidor (vazio na API antiga); não editado, o save manda o texto.
+      next[index] = { ...next[index], ...patch, rpe_edited: false };
       onChange(next);
     } catch {
       // silencioso: mantém os campos como estavam.
@@ -494,24 +517,25 @@ export function ExercisesTable({
           {refreshPrescriptionError}
         </Text>
       )}
-      <Table.ScrollContainer minWidth={1500}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
-          <Table.Thead>
+      <Table.ScrollContainer minWidth={TABLE_MIN_WIDTH}>
+        <Table striped highlightOnHover withTableBorder withColumnBorders={false} verticalSpacing="sm" horizontalSpacing="xs">
+          <Table.Thead bg="var(--mantine-color-default-hover)">
             <Table.Tr>
-              <Table.Th w={70} style={NOWRAP}>Ordem</Table.Th>
-              <Table.Th miw={200} style={NOWRAP}>Exercício</Table.Th>
-              <Table.Th miw={140} style={NOWRAP}>Grupo primário</Table.Th>
-              <Table.Th miw={COL_WIDTH.sets} style={NOWRAP}>Séries</Table.Th>
-              <Table.Th miw={COL_WIDTH.reps} style={NOWRAP}>Reps</Table.Th>
-              <Table.Th miw={COL_WIDTH.load} style={NOWRAP}>Carga</Table.Th>
-              <Table.Th miw={COL_WIDTH.rpe} style={NOWRAP}>RPE</Table.Th>
-              <Table.Th miw={COL_WIDTH.rest} style={NOWRAP}>Descanso(s)</Table.Th>
-              <Table.Th w={70} style={NOWRAP}>Aquec.</Table.Th>
-              <Table.Th miw={170} style={NOWRAP}>Config. avançada</Table.Th>
-              <Table.Th miw={160}>Notas</Table.Th>
-              <Table.Th w={110} style={NOWRAP}>Progressão</Table.Th>
-              <Table.Th miw={190}>Prescrição</Table.Th>
-              <Table.Th w={onSwapEquipment || onPickDraftEquipment ? 110 : 90} style={NOWRAP}>Ações</Table.Th>
+              <Table.Th miw={COL_WIDTH.order} style={TH}>Ordem</Table.Th>
+              <Table.Th miw={COL_WIDTH.exercise} style={TH}>Exercício</Table.Th>
+              <Table.Th miw={COL_WIDTH.group} style={TH}>Grupo primário</Table.Th>
+              <Table.Th miw={COL_WIDTH.sets} style={TH}>Séries</Table.Th>
+              <Table.Th miw={COL_WIDTH.reps} style={TH}>Reps</Table.Th>
+              <Table.Th miw={COL_WIDTH.load} style={TH}>Carga</Table.Th>
+              <Table.Th miw={COL_WIDTH.rpeSets} style={TH}>RPE</Table.Th>
+              <Table.Th miw={COL_WIDTH.rest} style={TH}>Descanso(s)</Table.Th>
+              <Table.Th miw={COL_WIDTH.advanced} style={TH}>Config. avançada</Table.Th>
+              <Table.Th miw={COL_WIDTH.notes} style={TH}>Notas</Table.Th>
+              <Table.Th miw={COL_WIDTH.progression} style={TH}>Progressão</Table.Th>
+              <Table.Th miw={COL_WIDTH.prescription} style={TH}>Prescrição</Table.Th>
+              <Table.Th miw={COL_WIDTH.actions} style={TH}>
+                <VisuallyHidden>Ações</VisuallyHidden>
+              </Table.Th>
             </Table.Tr>
           </Table.Thead>
           <DragDropContext onDragEnd={handleDragEnd}>
@@ -524,6 +548,13 @@ export function ExercisesTable({
               const rowOptions = filterBySwapEligibility(exerciseAutocompleteData, swapEligibility);
               const prescBadges = prescriptionBadges(exercise);
               const breakdown = activationBreakdown[index];
+              // Mesmas condições dos antigos botões da coluna Ações: ficha (linha salva) ou rascunho (linha nova), sempre vinculada ao catálogo.
+              const openEquipmentSwap =
+                readOnly || exercise.mapping_id == null
+                  ? undefined
+                  : isSavedRow(exercise)
+                    ? onSwapEquipment && (() => onSwapEquipment(exercise))
+                    : onPickDraftEquipment && (() => onPickDraftEquipment(index));
               const hasBreakdown =
                 !!breakdown &&
                 (breakdown.primary_activation > 0 || breakdown.secondary.length > 0 || breakdown.stabilizer.length > 0);
@@ -531,7 +562,12 @@ export function ExercisesTable({
               <Fragment key={index}>
               <Draggable draggableId={`exercise-${index}`} index={index} isDragDisabled={readOnly}>
                 {(draggableProvided) => (
-              <Table.Tr ref={draggableProvided.innerRef} {...draggableProvided.draggableProps}>
+              <Table.Tr
+                ref={draggableProvided.innerRef}
+                {...draggableProvided.draggableProps}
+                // Topo: linhas com RPE por série ou notas altas não desalinham os demais campos.
+                style={{ ...draggableProvided.draggableProps.style, verticalAlign: 'top' }}
+              >
                 <Table.Td>
                   <Group gap={2} wrap="nowrap">
                     <ActionIcon
@@ -621,10 +657,30 @@ export function ExercisesTable({
                     // inteira; linha livre: o catálogo todo, então limita.
                     limit={swapEligibility.kind === 'restricted' ? undefined : 20}
                   />
-                  {exercise.equipment_name && (
-                    <Text size="xs" c={BRAND.textMuted} mt={2}>
-                      {exercise.equipment_name}
-                    </Text>
+                  {openEquipmentSwap ? (
+                    <Tooltip label="Trocar só o equipamento; o exercício não muda" withArrow>
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="brand"
+                        mt={6}
+                        maw="100%"
+                        leftSection={<IconReplace size={12} />}
+                        onClick={openEquipmentSwap}
+                        aria-label={`Trocar equipamento: ${exercise.equipment_name || 'não definido'}`}
+                      >
+                        {exercise.equipment_name || 'Escolher equipamento'}
+                      </Button>
+                    </Tooltip>
+                  ) : (
+                    exercise.equipment_name && (
+                      <Group gap={4} mt={6} wrap="nowrap">
+                        <IconBarbell size={12} color={BRAND.textMuted} />
+                        <Text size="xs" c={BRAND.textMuted}>
+                          {exercise.equipment_name}
+                        </Text>
+                      </Group>
+                    )
                   )}
                 </Table.Td>
                 <Table.Td>
@@ -717,13 +773,6 @@ export function ExercisesTable({
                   />
                 </Table.Td>
                 <Table.Td>
-                  <Checkbox
-                    disabled={readOnly}
-                    checked={!!exercise.warmup}
-                    onChange={(e) => updateExercise(index, { warmup: e.currentTarget.checked })}
-                  />
-                </Table.Td>
-                <Table.Td>
                   <Group gap={4} wrap="wrap">
                     {configBadges.map((badge) => (
                       <Tooltip key={badge.key} label={badge.tooltip} multiline w={220}>
@@ -789,44 +838,18 @@ export function ExercisesTable({
                   </Group>
                 </Table.Td>
                 <Table.Td>
-                  <Group gap={2} wrap="nowrap">
-                    {!readOnly && onSwapEquipment && exercise.workout_plan_exercise_id != null && exercise.mapping_id != null && (
-                      <Tooltip label="Trocar equipamento (só o equipamento; o exercício não muda)" withArrow>
-                        <ActionIcon
-                          color="brand"
-                          variant="subtle"
-                          onClick={() => onSwapEquipment(exercise)}
-                          aria-label="Trocar equipamento"
-                        >
-                          <IconReplace size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                    {!readOnly && onPickDraftEquipment && exercise.workout_plan_exercise_id == null && exercise.mapping_id != null && (
-                      <Tooltip label="Escolher equipamento (só o equipamento; o exercício não muda)" withArrow>
-                        <ActionIcon
-                          color="brand"
-                          variant="subtle"
-                          onClick={() => onPickDraftEquipment(index)}
-                          aria-label="Escolher equipamento"
-                        >
-                          <IconReplace size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                    {!readOnly && (
-                      <ActionIcon color="red" variant="subtle" onClick={() => removeExercise(index)} aria-label="Remover exercício">
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    )}
-                  </Group>
+                  {!readOnly && (
+                    <ActionIcon color="red" variant="subtle" onClick={() => removeExercise(index)} aria-label="Remover exercício">
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  )}
                 </Table.Td>
               </Table.Tr>
                 )}
               </Draggable>
               {hasBreakdown && (
                 <Table.Tr>
-                  <Table.Td colSpan={14}>
+                  <Table.Td colSpan={13}>
                     <Group gap="xs" wrap="wrap">
                       <IconBarbell size={14} color="var(--mantine-color-green-6)" />
                       <Text size="xs" c={BRAND.textMuted}>
@@ -859,14 +882,14 @@ export function ExercisesTable({
             })}
             {droppableProvided.placeholder ? (
               <Table.Tr>
-                <Table.Td colSpan={14} p={0} style={{ border: 'none' }}>
+                <Table.Td colSpan={13} p={0} style={{ border: 'none' }}>
                   {droppableProvided.placeholder}
                 </Table.Td>
               </Table.Tr>
             ) : null}
             {exercises.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={14}>
+                <Table.Td colSpan={13}>
                   <Text c={BRAND.textMuted} ta="center">
                     Nenhum exercício nesta ficha ainda.
                   </Text>

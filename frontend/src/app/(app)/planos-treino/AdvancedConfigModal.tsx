@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Button, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import {
   getAdvancedTechniqueDefaultSetsCount,
@@ -20,6 +20,7 @@ export type AdvancedConfigPatch = Pick<
   | 'advanced_technique'
   | 'advanced_technique_applications'
   | 'advanced_technique_duration_seconds'
+  | 'warmup'
   | 'warmup_sets_count'
   | 'warmup_reps'
   | 'warmup_rest_seconds'
@@ -35,6 +36,7 @@ function patchOf(exercise: WorkoutPlanExercise | null): AdvancedConfigPatch {
     advanced_technique: exercise?.advanced_technique ?? null,
     advanced_technique_applications: exercise?.advanced_technique_applications ?? null,
     advanced_technique_duration_seconds: exercise?.advanced_technique_duration_seconds ?? null,
+    warmup: !!exercise?.warmup,
     warmup_sets_count: exercise?.warmup_sets_count ?? null,
     warmup_reps: exercise?.warmup_reps ?? null,
     warmup_rest_seconds: exercise?.warmup_rest_seconds ?? null,
@@ -135,6 +137,11 @@ export function AdvancedConfigModal({ exercise, onClose, onApply }: Props) {
           <Text size="sm" fw={600} c={BRAND.textPrimary}>
             Aquecimento
           </Text>
+          <Switch
+            label="Fazer aquecimento neste exercício"
+            checked={draft.warmup}
+            onChange={(e) => update({ warmup: e.currentTarget.checked })}
+          />
           <SimpleGrid cols={{ base: 1, xs: 3 }}>
             <NumberInput
               label="Séries"

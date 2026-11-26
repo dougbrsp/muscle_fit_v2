@@ -38,6 +38,22 @@ describe('RpePerSetField — renderização', () => {
     expect(html).not.toContain('RPE esperado da série 4');
     expect(html).toContain('ex.: 8');
     expect(html).toContain('Repetir a 1ª em todas');
+    expect(html).toContain('>S1<');
+    expect(html).toContain('value="7"');
+    expect(html).not.toContain('Sem RPE definido');
+  });
+
+  it('sem alvo e sem texto: deixa claro que está em branco, sem inventar valores', () => {
+    const html = render(createElement(RpePerSetField, { targets: [], setsCount: 2, onCommit: noop }));
+    expect(html).toContain('Sem RPE definido');
+    expect(html).toContain('RPE esperado da série 2');
+    expect(html).not.toMatch(/value="\d/);
+  });
+
+  it('mais séries que alvos: repete o último (fitRpeTargets)', () => {
+    const html = render(createElement(RpePerSetField, { targets: [7, 8], setsCount: 3, onCommit: noop }));
+    expect(html).toContain('RPE esperado da série 3');
+    expect(html).toContain('value="8"');
   });
 });
 

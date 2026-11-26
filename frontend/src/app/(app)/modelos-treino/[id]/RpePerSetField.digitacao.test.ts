@@ -70,6 +70,16 @@ describe('RpePerSetField — digitação (#237)', () => {
     expect(host.textContent).not.toContain(WARNING);
   });
 
+  it('mudar o número de séries mantém os valores que ficam', async () => {
+    await act(async () => {
+      root.render(
+        createElement(MantineProvider, { theme }, createElement(RpePerSetField, { targets: [7, 8], setsCount: 3, onCommit })),
+      );
+    });
+    expect([field(1).value, field(2).value, field(3).value]).toEqual(['7', '8', '8']);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('vírgula decimal', () => {
     type(field(2), '9,5');
     leave(field(2));

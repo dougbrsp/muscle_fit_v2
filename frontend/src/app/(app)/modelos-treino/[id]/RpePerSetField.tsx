@@ -70,16 +70,23 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
     <Input.Wrapper
       size="xs"
       label="RPE esperado por série"
-      description={storedText ? `Ao preencher, o alvo gravado (${storedText}) será substituído.` : (hint ?? undefined)}
+      description={
+        storedText
+          ? `Ao preencher, o alvo gravado (${storedText}) será substituído.`
+          : shown.length === 0
+            ? `Sem RPE definido${hint ? ` (${hint})` : ''}`
+            : (hint ?? undefined)
+      }
     >
-      <Group gap={4} wrap="wrap" align="flex-end">
+      {/* Grade regular: colunas de mesma largura que quebram em telas estreitas. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 6, alignItems: 'end' }}>
         {draft.map((value, index) => (
           <NumberInput
             key={index}
             size="xs"
-            w={62}
+            label={`S${index + 1}`}
             aria-label={`RPE esperado da série ${index + 1}`}
-            placeholder={`S${index + 1}`}
+            placeholder="—"
             value={value ?? ''}
             min={RPE_TARGET_SCALE.min}
             max={RPE_TARGET_SCALE.max}
@@ -97,15 +104,16 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
             onBlur={() => commit(draft)}
           />
         ))}
-        <Button
-          size="compact-xs"
-          variant="subtle"
-          disabled={filledFirst(draft) === null}
-          onClick={() => commit(draft.map(() => filledFirst(draft)))}
-        >
-          Repetir a 1ª em todas
-        </Button>
-      </Group>
+      </div>
+      <Button
+        mt={4}
+        size="compact-xs"
+        variant="subtle"
+        disabled={filledFirst(draft) === null}
+        onClick={() => commit(draft.map(() => filledFirst(draft)))}
+      >
+        Repetir a 1ª em todas
+      </Button>
     </Input.Wrapper>
   );
 }

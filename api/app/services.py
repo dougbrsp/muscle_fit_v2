@@ -2237,6 +2237,8 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
         legacy_indicators,
         progression_note,
     )
+    from .domain.prescription_defaults import DEFAULT_SETS_COUNT
+    from .domain.training_history import expand_rpe_targets
     from .workout_plan_ai import normalize_load_target
 
     if suggestion is None:
@@ -2251,6 +2253,7 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
             "last_reps": None,
             "trend": "unknown",
             "last_date": None,
+            "rpe_targets_by_set": [],
         }
 
     decision = suggestion.decision
@@ -2259,6 +2262,11 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
         "reps_target": suggestion.reps_target or "",
         "load_target": normalize_load_target(suggestion.suggested_load_kg) or "",
         "rpe_target": suggestion.rpe_target or "",
+        # #334 (aditivo): RPE por serie expandido pelo dono (series da decisao; sem
+        # elas, o default de series da prescricao).
+        "rpe_targets_by_set": expand_rpe_targets(
+            suggestion.rpe_target, decision.get("suggested_sets") or DEFAULT_SETS_COUNT
+        ),
         "progression_note": progression_note(suggestion),
         "has_history": last is not None or suggestion.track_load_status is not None,
         # Seta da ficha (increased/decreased/same/None): carga sugerida contra a
