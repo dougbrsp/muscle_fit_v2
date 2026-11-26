@@ -282,4 +282,51 @@ describe('MealEditor: quantidade confirmada só no blur', () => {
     expect(host.textContent).not.toContain('Refeição incompleta');
     expect(createMeal).not.toHaveBeenCalled();
   });
+
+  it('blur seguido de clique em Salvar grava o valor confirmado uma única vez', async () => {
+    const el = campo();
+    await focar(el);
+    await digitar(el, '320');
+    await desfocar(campo());
+    await act(async () => botaoSalvar().click());
+    await esperar(50);
+    expect(createMeal).toHaveBeenCalledTimes(1);
+    expect(createMeal.mock.calls[0][0].items[0].quantity).toBe(320);
+  });
+
+  it('erro de rede no preview mantém o valor digitado no campo', async () => {
+    previewMeal.mockRejectedValue(new Error('rede'));
+    const el = campo();
+    await focar(el);
+    await digitar(el, '333');
+    await desfocar(campo());
+    await esperar();
+    expect(previewMeal).toHaveBeenCalledTimes(1);
+    expect(campo().value).toBe('333');
+  });
+
+  it('Salvar barrado só por falta de refeição, com o rascunho de quantidade válido: sem o aviso de quantidade', async () => {
+    const vazio = { ...RASCUNHO.items[0], quantity: '' as const };
+    await montar({ ...RASCUNHO, meal_slot: null, items: [vazio] });
+    const el = campo();
+    await focar(el);
+    await digitar(el, '100');
+    await act(async () => botaoSalvar().click());
+    await esperar(50);
+    expect(createMeal).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('Escolha a refeição para salvar');
+    expect(host.textContent).not.toContain('Informe a quantidade de cada alimento');
+  });
+
+  it('Salvar barrado com outro item ainda sem quantidade: o aviso de quantidade aparece', async () => {
+    const vazio = { ...RASCUNHO.items[0], quantity: '' as const };
+    await montar({ ...RASCUNHO, meal_slot: null, items: [vazio, { ...vazio, key: 'k-2', label: 'Feijão' }] });
+    const el = campo();
+    await focar(el);
+    await digitar(el, '100');
+    await act(async () => botaoSalvar().click());
+    await esperar(50);
+    expect(createMeal).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('Informe a quantidade de cada alimento');
+  });
 });
