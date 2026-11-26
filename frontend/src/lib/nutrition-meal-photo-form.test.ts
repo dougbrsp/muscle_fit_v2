@@ -5,9 +5,10 @@ import {
   MEAL_NATURE_OPTIONS,
   MEAL_PARSE_STATUS_OPTIONS,
   MEAL_PHOTO,
+  PORTION_UNITS,
   nutritionLabel,
 } from './nutrition-constants';
-import { chooseCandidate, chooseEstimate, itemsPayload, mealCreatePayload, mealPreviewPayload, photoMetaView } from './nutrition-meal-form';
+import { chooseCandidate, chooseCatalogFood, chooseEstimate, itemsPayload, mealCreatePayload, mealPreviewPayload, photoMetaView } from './nutrition-meal-form';
 import { editorFormFromPhoto } from './nutrition-meal-parse';
 import type { MealParseCandidate, MealPhotoItem, MealPhotoResult } from './nutrition-types';
 
@@ -115,6 +116,38 @@ describe('foto do prato: formulário', () => {
     const mantem = MEAL_PHOTO.edited_item_keeps_range ? { gramsLow: 120, gramsHigh: 180 } : { gramsLow: null, gramsHigh: null };
     expect(photoMetaView(trocado)).toMatchObject({ evidence: MEAL_PHOTO.edited_item_evidence, ...mantem });
     expect(photoMetaView(chooseEstimate(trocado))).toMatchObject({ evidence: 'observed', gramsLow: 120 });
+  });
+
+  it('buscar outro alimento no catálogo troca a origem, preserva chave e quantidade e conta como edição', () => {
+    const form = editorFormFromPhoto(
+      resultado([item({ index: 0, evidence: 'observed', grams_low: 120, grams_high: 180, candidates: [CANDIDATO] }), item({ index: 1 })]),
+      { date: 'x', slot: null },
+    );
+    const [estimado, outro] = form.items;
+    const AVEIA = { id: 77, name: 'Aveia', basis: 'g', default_portion: { quantity: 30, unit: 'g' }, brand: 'X' } as const;
+    const trocado = chooseCatalogFood(estimado, AVEIA);
+    expect(trocado).toMatchObject({
+      key: estimado.key,
+      food_id: 77,
+      label: 'Aveia',
+      basis: 'g',
+      quantity: 120,
+      unit: 'g',
+      usesEstimate: false,
+      lowConfidence: false,
+      matchConfidence: null,
+      originLabel: SELO_CATALOGO,
+      originalFoodId: null,
+    });
+    expect(trocado.searchedFoods?.map((f) => f.id)).toEqual([77]);
+    expect(chooseCatalogFood(trocado, AVEIA).searchedFoods).toHaveLength(1); // não duplica a opção
+    const mantem = MEAL_PHOTO.edited_item_keeps_range ? { gramsLow: 120, gramsHigh: 180 } : { gramsLow: null, gramsHigh: null };
+    expect(photoMetaView(trocado)).toMatchObject({ evidence: MEAL_PHOTO.edited_item_evidence, ...mantem });
+    // Os demais itens não mudam; o corpo leva o alimento novo, sem estimativa.
+    expect(itemsPayload([trocado, outro])?.[0]).toEqual({ quantity: 120, unit: 'g', food_id: 77, portion_id: null });
+    // Unidade com porção não se aplica ao alimento novo: volta ao padrão do alimento.
+    const comPorcao = chooseCatalogFood({ ...estimado, unit: PORTION_UNITS[0], portion_id: 5 }, AVEIA);
+    expect(comPorcao).toMatchObject({ quantity: 30, unit: 'g', portion_id: null });
   });
 
   it('trocar a origem atualiza o selo e o destaque, nos dois sentidos', () => {

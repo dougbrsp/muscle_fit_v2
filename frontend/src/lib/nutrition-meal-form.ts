@@ -33,6 +33,8 @@ import type {
   NutritionLimitation,
 } from './nutrition-types';
 
+export type SearchedFood = Pick<FoodItem, 'id' | 'name' | 'basis' | 'default_portion'> & { brand?: string | null };
+
 export type MealEditorItem = {
   /** Chave estável na tela (o `id` do item gravado ou uma nova). */
   key: string;
@@ -67,6 +69,8 @@ export type MealEditorItem = {
   /** Evidência/faixa/incerteza do peso que a foto do prato (v2) entregou; só exibição, nunca vai à API. */
   /** Alimento (`food_id`) antes da primeira troca pela pessoa; `undefined` = nunca trocou. Só para a evidência da foto. */
   originalFoodId?: number | null;
+  /** Alimentos que a pessoa buscou no catálogo para este item (opções extras do seletor); só no cliente. */
+  searchedFoods?: SearchedFood[];
   photoMeta?: { evidence: NutritionCode | null; gramsLow: number | null; gramsHigh: number | null; uncertainty: NutritionCode | null } | null;
 };
 
@@ -206,6 +210,33 @@ export function chooseCandidate(item: MealEditorItem, candidate: MealParseCandid
     portion_id: null,
     matchConfidence: candidate.score,
     originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, CATALOG_ITEM_NATURE),
+  };
+}
+
+/** Troca a origem do item por outro alimento buscado no catálogo pela pessoa. Mantém a quantidade e a
+ * unidade sem porção (g, ml, medidas caseiras; a API confere); com porção, volta ao padrão do alimento
+ * como `editorItemFromFood`. O alimento entra nas opções do seletor (sem nota de casamento: escolha da pessoa). */
+export function chooseCatalogFood(item: MealEditorItem, food: SearchedFood): MealEditorItem {
+  const padrao = editorItemFromFood(food, item.key);
+  const mantem = !unitUsesPortion(item.unit);
+  const jaListado = item.choices.some((c) => c.food_id === food.id) || (item.searchedFoods ?? []).some((f) => f.id === food.id);
+  return {
+    ...item,
+    originalFoodId: item.originalFoodId !== undefined ? item.originalFoodId : item.food_id,
+    food_id: food.id,
+    label: food.name,
+    basis: food.basis,
+    quantity: mantem ? item.quantity : padrao.quantity,
+    unit: mantem ? item.unit : padrao.unit,
+    usesEstimate: false,
+    lowConfidence: false,
+    portion_id: null,
+    matchConfidence: null,
+    originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, CATALOG_ITEM_NATURE),
+    searchedFoods: jaListado ? item.searchedFoods : [
+          ...(item.searchedFoods ?? []),
+          { id: food.id, name: food.name, basis: food.basis, default_portion: food.default_portion, brand: food.brand ?? null },
+        ],
   };
 }
 
