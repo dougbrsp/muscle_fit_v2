@@ -202,7 +202,7 @@ export function chooseEstimate(item: MealEditorItem): MealEditorItem {
   };
 }
 
-function quantidade(valor: number | string): number | null {
+export function quantidade(valor: number | string): number | null {
   if (valor === '' || valor === null) return null;
   const numero = Number(valor);
   return Number.isFinite(numero) ? numero : null;

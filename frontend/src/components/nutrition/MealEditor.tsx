@@ -50,6 +50,7 @@ import {
   mealCreatePayload,
   mealPreviewPayload,
   mealPayload,
+  quantidade,
   unitUsesPortion,
   type MealEditorForm,
   type MealEditorItem,
@@ -137,9 +138,6 @@ function SourceSelect({ item, onChange }: { item: MealEditorItem; onChange: (ite
 
 type Pendentes = MutableRefObject<Map<string, number | string>>;
 
-// Mesma regra de `quantidade` em nutrition-meal-form: vazio ou não numérico não vale.
-const quantidadeValida = (v: number | string) => v !== '' && Number.isFinite(Number(v));
-
 function ItemRow({
   item,
   pendentes,
@@ -162,13 +160,13 @@ function ItemRow({
   const [erroQuantidade, setErroQuantidade] = useState(false);
   useEffect(() => {
     const valor = pendentes.current.get(item.key);
-    if (tentativasInvalidas > 0 && valor !== undefined && !quantidadeValida(valor)) setErroQuantidade(true);
+    if (tentativasInvalidas > 0 && valor !== undefined && quantidade(valor) === null) setErroQuantidade(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tentativasInvalidas]);
   function confirmarQuantidade() {
     const valor = pendentes.current.get(item.key);
     if (valor === undefined) return;
-    if (!quantidadeValida(valor)) {
+    if (quantidade(valor) === null) {
       setErroQuantidade(true);
       return;
     }
@@ -310,14 +308,17 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   }, [foto]);
 
   /** Payload de gravação sobre o form com as quantidades ainda em foco (blur/clique fora de ordem) já aplicadas. */
-  function montarCorpo() {
-    const efetivo: MealEditorForm = {
+  function formEfetivo(): MealEditorForm {
+    return {
       ...form,
       items: form.items.map((i) => {
         const v = pendentes.current.get(i.key);
-        return v !== undefined && quantidadeValida(v) ? { ...i, quantity: v } : i;
+        return v !== undefined && quantidade(v) !== null ? { ...i, quantity: v } : i;
       }),
     };
+  }
+  function montarCorpo() {
+    const efetivo = formEfetivo();
     return meal ? mealPayload(efetivo) : mealCreatePayload(efetivo);
   }
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
@@ -365,7 +366,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const sincronizar = () => setTemPendente(pendentes.current.size > 0);
   function tentarSalvar() {
     const chaves = new Set(form.items.map((i) => i.key));
-    if (Array.from(pendentes.current).some(([k, v]) => chaves.has(k) && !quantidadeValida(v))) {
+    if (Array.from(pendentes.current).some(([k, v]) => chaves.has(k) && quantidade(v) === null)) {
       setTentativasInvalidas((n) => n + 1);
       return;
     }
@@ -404,7 +405,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const erroPreview = preview.isError ? nutritionErrorInfo(preview.error, 'Não foi possível calcular a refeição.') : null;
   const erroSalvar = salvar.isError ? nutritionErrorInfo(salvar.error, 'Não foi possível salvar a refeição.') : null;
   const semOrigem = form.items.some((item) => !itemHasSource(item));
-  const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem && (!temPendente || mostrarPendencias);
+  const faltaQuantidade = form.items.length > 0 && mealPreviewPayload(formEfetivo(), meal?.id) === null && !semOrigem && (!temPendente || mostrarPendencias);
 
   function fecharCadastro() {
     // Fechou (X, Esc, voltar) na etapa final: o alimento já foi salvo, então entra na refeição como em "Concluir",
@@ -667,7 +668,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           </Alert>
         )}
         {preview.data && corpoPreview && (
-          <Stack gap="xs">
+          <Stack gap="xs" aria-busy={preview.isPlaceholderData} style={preview.isPlaceholderData ? { opacity: 0.5 } : undefined}>
             <Group gap="xs">
               <Text size="sm" fw={600} c={BRAND.textPrimary}>
                 Calculado pelo motor
