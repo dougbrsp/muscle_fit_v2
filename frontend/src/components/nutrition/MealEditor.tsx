@@ -26,7 +26,17 @@ import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { QuickEntryItemRow } from './QuickEntryItemRow';
 import { useScannerOpen } from '@/lib/barcode-scanner-open';
-import { MEAL_ITEMS_LIMIT, MEAL_ITEM_LOW_CONFIDENCE_NOTICE, MEAL_SLOT_OPTIONS, UNIT_OPTIONS, nutritionNotice } from '@/lib/nutrition-constants';
+import {
+  MEAL_ITEMS_LIMIT,
+  MEAL_ITEM_LOW_CONFIDENCE_NOTICE,
+  MEAL_PHOTO_EVIDENCE_OPTIONS,
+  MEAL_PHOTO_UNCERTAINTY_OPTIONS,
+  MEAL_SLOT_OPTIONS,
+  PHOTO_UNCERTAINTY_NONE,
+  UNIT_OPTIONS,
+  nutritionLabel,
+  nutritionNotice,
+} from '@/lib/nutrition-constants';
 import {
   createMeal,
   fetchFood,
@@ -50,6 +60,8 @@ import {
   mealCreatePayload,
   mealPreviewPayload,
   mealPayload,
+  photoMetaView,
+  quantidade,
   unitUsesPortion,
   type MealEditorForm,
   type MealEditorItem,
@@ -137,9 +149,6 @@ function SourceSelect({ item, onChange }: { item: MealEditorItem; onChange: (ite
 
 type Pendentes = MutableRefObject<Map<string, number | string>>;
 
-// Mesma regra de `quantidade` em nutrition-meal-form: vazio ou não numérico não vale.
-const quantidadeValida = (v: number | string) => v !== '' && Number.isFinite(Number(v));
-
 function ItemRow({
   item,
   pendentes,
@@ -162,13 +171,13 @@ function ItemRow({
   const [erroQuantidade, setErroQuantidade] = useState(false);
   useEffect(() => {
     const valor = pendentes.current.get(item.key);
-    if (tentativasInvalidas > 0 && valor !== undefined && !quantidadeValida(valor)) setErroQuantidade(true);
+    if (tentativasInvalidas > 0 && valor !== undefined && quantidade(valor) === null) setErroQuantidade(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tentativasInvalidas]);
   function confirmarQuantidade() {
     const valor = pendentes.current.get(item.key);
     if (valor === undefined) return;
-    if (!quantidadeValida(valor)) {
+    if (quantidade(valor) === null) {
       setErroQuantidade(true);
       return;
     }
@@ -178,6 +187,7 @@ function ItemRow({
     onChange({ ...item, quantity: valor });
   }
   if (item.quick) return <QuickEntryItemRow item={item} draft={item.quick} onChange={onChange} onRemove={onRemove} />;
+  const meta = photoMetaView(item);
   const daLeitura = item.choices.length > 0 || (item.id === null && item.estimate !== null);
   // Item estimado não tem porção: só g, ml e medidas caseiras (a API confere de novo).
   const unidades = item.food_id == null ? UNIT_OPTIONS.filter((opcao) => !unitUsesPortion(opcao.value)) : UNIT_OPTIONS;
@@ -255,6 +265,25 @@ function ItemRow({
           <IconTrash size={16} />
         </ActionIcon>
       </Group>
+      {meta && (
+        <Group gap="xs" data-testid="item-foto-meta" aria-label={`Leitura da foto: ${item.label}`}>
+          {meta.evidence && (
+            <Badge size="xs" variant="outline" color="gray" data-testid="item-evidencia">
+              {nutritionLabel(MEAL_PHOTO_EVIDENCE_OPTIONS, meta.evidence)}
+            </Badge>
+          )}
+          {meta.gramsLow != null && meta.gramsHigh != null && (
+            <Text size="xs" c={BRAND.textMuted} data-testid="item-faixa">
+              {meta.gramsLow}–{meta.gramsHigh} g
+            </Text>
+          )}
+          {meta.uncertainty && meta.uncertainty !== PHOTO_UNCERTAINTY_NONE && (
+            <Text size="xs" c={BRAND.textMuted} data-testid="item-incerteza">
+              {nutritionLabel(MEAL_PHOTO_UNCERTAINTY_OPTIONS, meta.uncertainty)}
+            </Text>
+          )}
+        </Group>
+      )}
       {item.notices.length > 0 && (
         <Text size="xs" c={BRAND.textMuted}>
           {item.notices.map((aviso) => aviso.label).join(' ')}
@@ -310,14 +339,17 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   }, [foto]);
 
   /** Payload de gravação sobre o form com as quantidades ainda em foco (blur/clique fora de ordem) já aplicadas. */
-  function montarCorpo() {
-    const efetivo: MealEditorForm = {
+  function formEfetivo(): MealEditorForm {
+    return {
       ...form,
       items: form.items.map((i) => {
         const v = pendentes.current.get(i.key);
-        return v !== undefined && quantidadeValida(v) ? { ...i, quantity: v } : i;
+        return v !== undefined && quantidade(v) !== null ? { ...i, quantity: v } : i;
       }),
     };
+  }
+  function montarCorpo() {
+    const efetivo = formEfetivo();
     return meal ? mealPayload(efetivo) : mealCreatePayload(efetivo);
   }
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
@@ -365,7 +397,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const sincronizar = () => setTemPendente(pendentes.current.size > 0);
   function tentarSalvar() {
     const chaves = new Set(form.items.map((i) => i.key));
-    if (Array.from(pendentes.current).some(([k, v]) => chaves.has(k) && !quantidadeValida(v))) {
+    if (Array.from(pendentes.current).some(([k, v]) => chaves.has(k) && quantidade(v) === null)) {
       setTentativasInvalidas((n) => n + 1);
       return;
     }
@@ -404,7 +436,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const erroPreview = preview.isError ? nutritionErrorInfo(preview.error, 'Não foi possível calcular a refeição.') : null;
   const erroSalvar = salvar.isError ? nutritionErrorInfo(salvar.error, 'Não foi possível salvar a refeição.') : null;
   const semOrigem = form.items.some((item) => !itemHasSource(item));
-  const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem && (!temPendente || mostrarPendencias);
+  const faltaQuantidade = form.items.length > 0 && mealPreviewPayload(formEfetivo(), meal?.id) === null && !semOrigem && (!temPendente || mostrarPendencias);
 
   function fecharCadastro() {
     // Fechou (X, Esc, voltar) na etapa final: o alimento já foi salvo, então entra na refeição como em "Concluir",
@@ -471,6 +503,11 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           <Alert color="brand" variant="light" icon={<IconSparkles size={16} />}>
             <Text size="sm">Confira os alimentos e as quantidades antes de salvar.</Text>
             {form.ai.notes && <Text size="sm">{form.ai.notes}</Text>}
+            {form.ai.mainUncertainty && form.ai.mainUncertainty !== PHOTO_UNCERTAINTY_NONE && (
+              <Text size="sm" data-testid="principal-incerteza">
+                Principal incerteza: {nutritionLabel(MEAL_PHOTO_UNCERTAINTY_OPTIONS, form.ai.mainUncertainty)}
+              </Text>
+            )}
             {form.ai.limitations.map((aviso) => (
               <Text key={aviso.code} size="sm">
                 {aviso.label}
@@ -667,7 +704,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           </Alert>
         )}
         {preview.data && corpoPreview && (
-          <Stack gap="xs">
+          <Stack gap="xs" aria-busy={preview.isPlaceholderData} style={preview.isPlaceholderData ? { opacity: 0.5 } : undefined}>
             <Group gap="xs">
               <Text size="sm" fw={600} c={BRAND.textPrimary}>
                 Calculado pelo motor

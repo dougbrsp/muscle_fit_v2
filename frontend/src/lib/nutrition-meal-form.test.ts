@@ -7,6 +7,7 @@ import {
   itemsPayload,
   mealCreatePayload,
   mealPayload,
+  quantidade,
   unitUsesPortion,
   type MealEditorForm,
 } from './nutrition-meal-form';
@@ -85,5 +86,14 @@ describe('nutrition-meal-form: só transporte, o FE nunca manda macro', () => {
       { key: 'item-5', id: 5, food_id: 3, label: ARROZ.name, basis: 'g', quantity: 150, unit: 'g', portion_id: null, ...SEM_LEITURA },
     ]);
     expect(volta.ai).toBeNull();
+  });
+});
+
+describe('quantidade: vazio ou não numérico não vale', () => {
+  it('valida número e texto numérico; rejeita vazio e lixo', () => {
+    expect(quantidade(150)).toBe(150);
+    expect(quantidade('2.5')).toBe(2.5);
+    expect(quantidade('')).toBeNull();
+    expect(quantidade('abc')).toBeNull();
   });
 });

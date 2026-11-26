@@ -276,6 +276,42 @@ describe('foto do prato: revisão no editor', () => {
     expect(JSON.stringify(createMeal.mock.calls[0][0])).not.toMatch(/low_?confidence/i);
   });
 
+  it('mostra evidência, faixa, incerteza, principal incerteza e limitation; editar um item preserva os outros', async () => {
+    const limitation = { code: 'meal_photo_total_grams_mismatch', label: 'A soma dos pesos difere do total informado.' };
+    const r = {
+      ...resultado('job-4', [
+        lido(0, { evidence: 'observed', grams_low: 120, grams_high: 180, uncertainty: 'hidden_portion' } as Partial<MealParseItem>),
+        lido(1, { candidates: [FRANGO], food_id: 410, quantity: 150, evidence: 'hypothesis', uncertainty: 'none' } as Partial<MealParseItem>),
+      ]),
+      main_uncertainty: 'preparation',
+      limitations: [limitation],
+    } as unknown as MealPhotoResult;
+    await montar(form(r));
+    const metas = () => Array.from(host.querySelectorAll('[data-testid="item-foto-meta"]'));
+    expect(metas()).toHaveLength(2);
+    expect(metas()[0].textContent).toContain(MEAL_PHOTO.evidence_labels.observed);
+    expect(metas()[0].textContent).toContain('120–180 g');
+    expect(metas()[0].textContent).toContain(MEAL_PHOTO.uncertainty_labels.hidden_portion);
+    expect(metas()[1].textContent).toContain(MEAL_PHOTO.evidence_labels.hypothesis);
+    expect(metas()[1].textContent).not.toContain(MEAL_PHOTO.uncertainty_labels.none);
+    expect(q('principal-incerteza').textContent).toContain(MEAL_PHOTO.uncertainty_labels.preparation);
+    expect(document.body.textContent).toContain(limitation.label);
+
+    await digitar(quantidades()[0], '200');
+    await act(async () => { quantidades()[0].dispatchEvent(new FocusEvent('focusout', { bubbles: true })); }); // confirma no blur
+    await esperar(2);
+    expect(metas()[0].textContent).toContain(MEAL_PHOTO.evidence_labels[MEAL_PHOTO.edited_item_evidence as keyof typeof MEAL_PHOTO.evidence_labels]);
+    expect(metas()[0].textContent).not.toContain(MEAL_PHOTO.evidence_labels.observed);
+    expect(metas()[0].textContent).not.toContain('120–180');
+    expect(metas()[1].textContent).toContain(MEAL_PHOTO.evidence_labels.hypothesis);
+  });
+
+  it('leitura v1 (sem os campos) não mostra metadado nem principal incerteza', async () => {
+    await montar();
+    expect(host.querySelector('[data-testid="item-foto-meta"]')).toBeNull();
+    expect(q('principal-incerteza')).toBeNull();
+  });
+
   it('rascunho sem foto (texto/manual) não mostra a ação', async () => {
     await montar(form(PRIMEIRO, null));
     expect(botao('Ver foto')).toBeUndefined();

@@ -15,6 +15,7 @@ import {
   CATALOG_ITEM_NATURE,
   ESTIMATE_ITEM_NATURE,
   MEAL_NATURE_OPTIONS,
+  MEAL_PHOTO,
   PORTION_UNITS,
   nutritionLabel,
   type NutritionCode,
@@ -63,7 +64,24 @@ export type MealEditorItem = {
   notices: NutritionLimitation[];
   /** Lançamento rápido gravado: os 5 valores editáveis (sem busca, porção, unidade nem peso). */
   quick?: QuickEntryDraft | null;
+  /** Evidência/faixa/incerteza do peso que a foto do prato (v2) entregou; só exibição, nunca vai à API. */
+  photoMeta?: { evidence: NutritionCode | null; gramsLow: number | null; gramsHigh: number | null; uncertainty: NutritionCode | null } | null;
 };
+
+/** O que a tela mostra do metadado da foto: peso alterado pela pessoa vira "informado por você" e perde a faixa da IA. */
+export function photoMetaView(item: MealEditorItem) {
+  const meta = item.photoMeta;
+  if (!meta) return null;
+  const editado = item.proposal != null && (quantidade(item.quantity) !== quantidade(item.proposal.quantity) || item.unit !== item.proposal.unit);
+  if (!editado) return meta;
+  const mantem = MEAL_PHOTO.edited_item_keeps_range;
+  return {
+    ...meta,
+    evidence: MEAL_PHOTO.edited_item_evidence,
+    gramsLow: mantem ? meta.gramsLow : null,
+    gramsHigh: mantem ? meta.gramsHigh : null,
+  };
+}
 
 export type MealEditorForm = {
   local_date: string;
@@ -80,6 +98,8 @@ export type MealEditorForm = {
     notes: string | null;
     limitations: NutritionLimitation[];
     ai_source?: string;
+    /** Principal incerteza da leitura da foto (v2); só exibição. */
+    mainUncertainty?: NutritionCode | null;
   } | null;
   /** Foto do prato enviada à análise: só no cliente, pelo tempo de vida do rascunho; nunca entra nos corpos da API. */
   photo?: Blob | null;
@@ -202,7 +222,7 @@ export function chooseEstimate(item: MealEditorItem): MealEditorItem {
   };
 }
 
-function quantidade(valor: number | string): number | null {
+export function quantidade(valor: number | string): number | null {
   if (valor === '' || valor === null) return null;
   const numero = Number(valor);
   return Number.isFinite(numero) ? numero : null;

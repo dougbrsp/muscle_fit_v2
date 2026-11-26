@@ -5,9 +5,10 @@ import {
   MEAL_NATURE_OPTIONS,
   MEAL_PARSE_STATUS_OPTIONS,
   MEAL_PHOTO,
+  PHOTO_UNCERTAINTY_NONE,
   nutritionLabel,
 } from './nutrition-constants';
-import { chooseCandidate, chooseEstimate, itemsPayload, mealCreatePayload, mealPreviewPayload } from './nutrition-meal-form';
+import { chooseCandidate, chooseEstimate, itemsPayload, mealCreatePayload, mealPreviewPayload, photoMetaView } from './nutrition-meal-form';
 import { editorFormFromPhoto } from './nutrition-meal-parse';
 import type { MealParseCandidate, MealPhotoItem, MealPhotoResult } from './nutrition-types';
 
@@ -82,6 +83,29 @@ describe('foto do prato: formulário', () => {
     expect(form.ai?.ai_source).toBe(MEAL_PHOTO.meal_source);
   });
 
+  it('evidência, faixa, incerteza e principal incerteza vêm do motor; leitura v1 não tem metadado', () => {
+    const form = editorFormFromPhoto(
+      {
+        ...resultado([
+          item({ index: 0, evidence: 'observed', grams_low: 120, grams_high: 180, uncertainty: 'hidden_portion' }),
+          item({ index: 1 }),
+        ]),
+        main_uncertainty: 'preparation',
+      },
+      { date: 'x', slot: null },
+    );
+    expect(form.items[0].photoMeta).toEqual({ evidence: 'observed', gramsLow: 120, gramsHigh: 180, uncertainty: 'hidden_portion' });
+    expect(form.items[1].photoMeta).toBeUndefined();
+    expect(form.ai?.mainUncertainty).toBe('preparation');
+    expect(photoMetaView(form.items[0])).toMatchObject({ evidence: 'observed', gramsLow: 120 });
+    // Gramas trocadas pela pessoa: "informado por você", sem a faixa da IA.
+    const editado = MEAL_PHOTO.edited_item_keeps_range ? { gramsLow: 120, gramsHigh: 180 } : { gramsLow: null, gramsHigh: null };
+    expect(photoMetaView({ ...form.items[0], quantity: 200 })).toMatchObject({ evidence: MEAL_PHOTO.edited_item_evidence, ...editado });
+    expect(photoMetaView({ ...form.items[0], unit: 'ml' })).toMatchObject({ evidence: MEAL_PHOTO.edited_item_evidence });
+    // O metadado nunca vai à API.
+    expect(JSON.stringify(mealPreviewPayload(form))).not.toMatch(/evidence|grams_low|uncertainty/);
+  });
+
   it('trocar a origem atualiza o selo e o destaque, nos dois sentidos', () => {
     const [estimado] = editorFormFromPhoto(resultado([item({ candidates: [CANDIDATO] })]), { date: 'x', slot: null }).items;
     const noCatalogo = chooseCandidate(estimado, CANDIDATO);
@@ -108,5 +132,12 @@ describe('foto do prato: formulário', () => {
     });
     expect(mealPreviewPayload({ ...form, items: [] })).toBeNull();
     expect(mealPreviewPayload({ ...form, meal_slot: 'lunch' }, 7)).toMatchObject({ meal_slot: 'lunch', meal_id: 7 });
+  });
+});
+
+describe('paridade dos códigos fixos da foto com o espelho do motor', () => {
+  it('PHOTO_UNCERTAINTY_NONE e a evidência do item editado existem nos enums do dono', () => {
+    expect(MEAL_PHOTO.uncertainties).toContain(PHOTO_UNCERTAINTY_NONE);
+    expect(MEAL_PHOTO.evidences).toContain(MEAL_PHOTO.edited_item_evidence);
   });
 });

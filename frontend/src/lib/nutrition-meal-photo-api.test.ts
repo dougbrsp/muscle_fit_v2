@@ -43,6 +43,17 @@ describe('foto do prato: upload e leitura', () => {
     expect(opcoes.body).not.toContain('=');
   });
 
+  it('descrição e peso total vão no corpo só quando informados', async () => {
+    apiFetch.mockResolvedValue({ job_id: 'j1', status: 'pending', poll_timeout_seconds: 240 });
+    await uploadMealPhoto(new Blob([JPEG_INICIO]), { ...CONTEXTO, description: 'arroz e frango', total_grams: 450 });
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({
+      ...CONTEXTO,
+      description: 'arroz e frango',
+      total_grams: 450,
+      image_base64: '/9j/4A',
+    });
+  });
+
   it('reduz com os parâmetros do dono, acompanha as etapas e usa o prazo da API', async () => {
     const reduzida = new Blob([JPEG_INICIO]);
     resizeImageForUpload.mockResolvedValue(reduzida);

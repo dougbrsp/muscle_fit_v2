@@ -1,10 +1,10 @@
 {
-  "_prompt_version": "nutrition-photo-v1",
+  "_prompt_version": "nutrition-photo-v2",
   "input": [
     {
       "content": [
         {
-          "text": "<<PROMPT 3231 chars, sha256 210ef64562610ba2>>",
+          "text": "<<PROMPT 5517 chars, sha256 6d70b9a9514a5168>>",
           "type": "input_text"
         },
         {
@@ -70,8 +70,28 @@
                     }
                   ]
                 },
+                "evidence": {
+                  "enum": [
+                    "observed",
+                    "user_informed",
+                    "hypothesis"
+                  ],
+                  "type": "string"
+                },
                 "grams_estimate": {
                   "type": "number"
+                },
+                "grams_high": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "grams_low": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
                 },
                 "name": {
                   "type": "string"
@@ -87,6 +107,18 @@
                     "number",
                     "null"
                   ]
+                },
+                "uncertainty": {
+                  "enum": [
+                    "none",
+                    "hidden_portion",
+                    "portion_scale",
+                    "preparation",
+                    "added_fat",
+                    "identity",
+                    "inedible_parts"
+                  ],
+                  "type": "string"
                 },
                 "unit": {
                   "enum": [
@@ -108,11 +140,27 @@
                 "grams_estimate",
                 "preparation",
                 "confidence",
-                "estimated_per_100g"
+                "estimated_per_100g",
+                "evidence",
+                "grams_low",
+                "grams_high",
+                "uncertainty"
               ],
               "type": "object"
             },
             "type": "array"
+          },
+          "main_uncertainty": {
+            "enum": [
+              "none",
+              "hidden_portion",
+              "portion_scale",
+              "preparation",
+              "added_fat",
+              "identity",
+              "inedible_parts"
+            ],
+            "type": "string"
           },
           "plate_status": {
             "enum": [
@@ -125,7 +173,8 @@
         },
         "required": [
           "plate_status",
-          "items"
+          "items",
+          "main_uncertainty"
         ],
         "type": "object"
       },

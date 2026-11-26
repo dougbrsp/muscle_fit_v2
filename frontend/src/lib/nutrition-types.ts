@@ -726,6 +726,10 @@ export type MealPhotoPayload = {
   local_date: string;
   meal_slot: NutritionCode | null;
   user_id?: number | null;
+  /** Descrição opcional da refeição (limite `MEAL_PHOTO.description_max_chars`); só vai quando preenchida. */
+  description?: string;
+  /** Peso total opcional em gramas (inteiro, teto `MEAL_PHOTO.total_grams_max`); só vai quando preenchido. */
+  total_grams?: number;
 };
 
 /** `POST /nutrition/meals/photo` (202): o job e o prazo do polling (em segundos). */
@@ -733,10 +737,22 @@ export type MealPhotoDispatch = { job_id: string; status: string; poll_timeout_s
 
 /** Resultado do job da foto: a forma da leitura por texto, com o que a IA viu. Sem itens
  * (foto sem comida ou não identificada), o motivo vem em `limitations`. */
-export type MealPhotoResult = Omit<MealParseResult, 'items'> & { items: MealPhotoItem[]; plate_status: NutritionCode };
+export type MealPhotoResult = Omit<MealParseResult, 'items'> & {
+  items: MealPhotoItem[];
+  plate_status: NutritionCode;
+  /** Principal incerteza da leitura (`MEAL_PHOTO.uncertainties`); ausente na leitura v1. */
+  main_uncertainty?: NutritionCode | null;
+};
 
-/** Item da foto: a natureza da proposta (`MEAL_NATURE_OPTIONS`), `null` enquanto a pessoa não escolher. */
-export type MealPhotoItem = MealParseItem & { nature: NutritionCode | null };
+/** Item da foto: a natureza da proposta (`MEAL_NATURE_OPTIONS`), `null` enquanto a pessoa não escolher.
+ * Evidência, faixa e incerteza (v2) vêm do motor; ausentes na leitura v1. */
+export type MealPhotoItem = MealParseItem & {
+  nature: NutritionCode | null;
+  evidence?: NutritionCode | null;
+  grams_low?: number | null;
+  grams_high?: number | null;
+  uncertainty?: NutritionCode | null;
+};
 
 export type MealPreview = {
   user_id: number;
