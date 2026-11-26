@@ -33,7 +33,7 @@ def test_chave_no_item_publico_da_leitura_por_texto(confianca, esperado):
 
 
 def test_chave_no_item_publico_da_leitura_por_foto():
-    leitura = SimpleNamespace(model="m")
+    leitura = SimpleNamespace(model="m", photos_read=1)  # photos_read: forma da leitura a partir do PR #335 (#325); ignorado antes dele
     corpo = ai.job_result(_resultado(LIMIAR - 0.1), {}, leitura, meal_photo.PlateStatus.RECOGNIZED, {}, 1)
     assert corpo["items"][0]["low_confidence"] is True
 
