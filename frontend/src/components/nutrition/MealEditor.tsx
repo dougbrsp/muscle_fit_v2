@@ -53,6 +53,7 @@ import { addRegisteredFood } from '@/lib/nutrition-food-registration';
 import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import {
   chooseCandidate,
+  chooseCatalogFood,
   chooseEstimate,
   editorFormFromMeal,
   editorItemFromFood,
@@ -112,39 +113,64 @@ function PortionSelect({
       value={item.portion_id != null ? String(item.portion_id) : null}
       onChange={(valor) => onChange(valor ? Number(valor) : null)}
       clearable
-      w={220}
       nothingFoundMessage="Alimento sem porção cadastrada"
     />
   );
 }
 
 const ESTIMATIVA = 'estimativa-da-ia';
+const BUSCAR = 'buscar-outro-alimento';
 
-/** Origem do item lido por IA: um dos candidatos do catálogo ou a estimativa da IA. */
+/** Origem do item lido por IA: um dos candidatos do catálogo, a estimativa da IA ou outro alimento buscado no catálogo. */
 function SourceSelect({ item, onChange }: { item: MealEditorItem; onChange: (item: MealEditorItem) => void }) {
+  const [buscando, setBuscando] = useState(false);
+  const rotulo = (nome: string, marca?: string | null) => (marca ? `${nome} (${marca})` : nome);
   const opcoes = [
-    ...item.choices.map((candidato) => ({
-      value: String(candidato.food_id),
-      label: candidato.brand ? `${candidato.name} (${candidato.brand})` : candidato.name,
-    })),
+    ...item.choices.map((candidato) => ({ value: String(candidato.food_id), label: rotulo(candidato.name, candidato.brand) })),
+    ...(item.searchedFoods ?? []).map((alimento) => ({ value: String(alimento.id), label: rotulo(alimento.name, alimento.brand) })),
     ...(item.estimate ? [{ value: ESTIMATIVA, label: `Estimativa da IA: ${item.estimate.name}` }] : []),
+    { value: BUSCAR, label: 'Buscar outro alimento…' },
   ];
   const valor = item.food_id != null ? String(item.food_id) : item.usesEstimate && item.estimate ? ESTIMATIVA : null;
   return (
-    <Select
-      label="Alimento"
-      placeholder="Escolha o alimento"
-      data={opcoes}
-      value={valor}
-      onChange={(novo) => {
-        if (novo === ESTIMATIVA) onChange(chooseEstimate(item));
-        const candidato = item.choices.find((c) => String(c.food_id) === novo);
-        if (candidato) onChange(chooseCandidate(item, candidato));
-      }}
-      allowDeselect={false}
-      error={valor === null ? 'Escolha o alimento' : undefined}
-      style={{ flex: '1 1 260px' }}
-    />
+    <Stack gap="xs">
+      <Select
+        label="Alimento"
+        placeholder="Escolha o alimento"
+        data={opcoes}
+        value={valor}
+        onChange={(novo) => {
+          if (novo === BUSCAR) {
+            setBuscando(true);
+            return;
+          }
+          if (novo === ESTIMATIVA) onChange(chooseEstimate(item));
+          const candidato = item.choices.find((c) => String(c.food_id) === novo);
+          if (candidato) return onChange(chooseCandidate(item, candidato));
+          const buscado = item.searchedFoods?.find((f) => String(f.id) === novo);
+          if (buscado) onChange(chooseCatalogFood(item, buscado));
+        }}
+        allowDeselect={false}
+        error={valor === null ? 'Escolha o alimento' : undefined}
+      />
+      {buscando && (
+        <Paper withBorder radius="sm" p="xs" data-testid="item-busca-catalogo" aria-label={`Buscar outro alimento para ${item.label}`}>
+          <Stack gap="xs">
+            <FoodSearch
+              isAdmin={false}
+              selectedId={item.food_id}
+              onSelect={(alimento) => {
+                setBuscando(false);
+                onChange(chooseCatalogFood(item, alimento));
+              }}
+            />
+            <Button variant="subtle" size="xs" onClick={() => setBuscando(false)} style={{ alignSelf: 'flex-start' }}>
+              Cancelar busca
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+    </Stack>
   );
 }
 
@@ -193,8 +219,9 @@ function ItemRow({
   // Item estimado não tem porção: só g, ml e medidas caseiras (a API confere de novo).
   const unidades = item.food_id == null ? UNIT_OPTIONS.filter((opcao) => !unitUsesPortion(opcao.value)) : UNIT_OPTIONS;
   return (
-    <Stack gap={2}>
-      <Group gap="xs" align="flex-end" wrap="wrap">
+    // Ordem fixa (celular ~375 px e desktop): alimento; quantidade + unidade + lixeira; porção; selos e avisos.
+    <Stack gap={6} data-testid="item-linha">
+      <div data-testid="item-alimento">
         {daLeitura ? (
           <SourceSelect
             item={item}
@@ -208,26 +235,12 @@ function ItemRow({
             }}
           />
         ) : (
-          <Text size="sm" fw={600} c={BRAND.textPrimary} style={{ flex: '1 1 200px' }}>
+          <Text size="sm" fw={600} c={BRAND.textPrimary}>
             {item.label}
           </Text>
         )}
-        {item.originLabel && (
-          <Badge
-            size="xs"
-            variant="light"
-            color={item.usesEstimate ? 'yellow' : 'brand'}
-            leftSection={<IconSparkles size={10} />}
-            mb={8}
-          >
-            {item.originLabel}
-          </Badge>
-        )}
-        {item.lowConfidence && (
-          <Badge size="xs" variant="light" color="yellow" leftSection={<IconAlertTriangle size={10} />} mb={8} data-testid="item-baixa-confianca">
-            {nutritionNotice(MEAL_ITEM_LOW_CONFIDENCE_NOTICE)}
-          </Badge>
-        )}
+      </div>
+      <Group gap="xs" align="flex-end" wrap="nowrap" data-testid="item-quantidade-unidade">
         <NumberInput
           label="Quantidade"
           value={rascunho ?? item.quantity}
@@ -245,7 +258,7 @@ function ItemRow({
           error={erroQuantidade ? 'Informe a quantidade' : undefined}
           min={0}
           decimalScale={3}
-          w={120}
+          style={{ flex: '1 1 0', minWidth: 0 }}
         />
         <Select
           label="Unidade"
@@ -253,19 +266,33 @@ function ItemRow({
           value={item.unit}
           onChange={(valor) => valor && onChange({ ...item, unit: valor, portion_id: unitUsesPortion(valor) ? item.portion_id : null })}
           allowDeselect={false}
-          w={190}
+          style={{ flex: '1 1 0', minWidth: 0 }}
         />
-        {unitUsesPortion(item.unit) && item.food_id != null && (
-          <PortionSelect
-            item={item}
-            foodId={item.food_id}
-            onChange={(portionId) => onChange({ ...item, portion_id: portionId })}
-          />
-        )}
-        <ActionIcon variant="subtle" color="red" aria-label={`Remover ${item.label}`} onClick={onRemove} mb={4}>
+        <ActionIcon variant="subtle" color="red" size="lg" aria-label={`Remover ${item.label}`} onClick={onRemove} mb={2}>
           <IconTrash size={16} />
         </ActionIcon>
       </Group>
+      {unitUsesPortion(item.unit) && item.food_id != null && (
+        <PortionSelect
+          item={item}
+          foodId={item.food_id}
+          onChange={(portionId) => onChange({ ...item, portion_id: portionId })}
+        />
+      )}
+      {(item.originLabel || item.lowConfidence) && (
+        <Group gap="xs" data-testid="item-selos">
+          {item.originLabel && (
+            <Badge size="xs" variant="light" color={item.usesEstimate ? 'yellow' : 'brand'} leftSection={<IconSparkles size={10} />}>
+              {item.originLabel}
+            </Badge>
+          )}
+          {item.lowConfidence && (
+            <Badge size="xs" variant="light" color="yellow" leftSection={<IconAlertTriangle size={10} />} data-testid="item-baixa-confianca">
+              {nutritionNotice(MEAL_ITEM_LOW_CONFIDENCE_NOTICE)}
+            </Badge>
+          )}
+        </Group>
+      )}
       {meta && (
         <Group gap="xs" data-testid="item-foto-meta" aria-label={`Leitura da foto: ${item.label}`}>
           {meta.evidence && (
