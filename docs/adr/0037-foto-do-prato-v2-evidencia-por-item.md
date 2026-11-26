@@ -1,6 +1,6 @@
 # ADR 0037: Foto do prato v2, com dicas da pessoa e evidência por item (issue #323, fase A)
 
-- **Status**: Aceita. Fase A na branch `feat/foto-prato-v2-l58`, sem commit. Não promovida a produção.
+- **Status**: Aceita, 2026-11-26, PR #329 (fase A da #323).
 - **Data**: 2026-11-26
 - **Relaciona-se a**: [ADR 0035](0035-receitas-como-alimento-composto.md) (formato deste registro; receitas ficam fora desta fase, #327); [ADR 0015](0015-progressao-fonte-unica-no-motor.md) (um único dono por cálculo, aplicado aos gramas e aos macros da foto); `docs/motores/FONTES_DA_VERDADE.md`, seção 80.1 (mapa do domínio da foto).
 
@@ -26,7 +26,7 @@
 ## Decisão
 
 1. **Upload com dicas opcionais.** `MealPhotoUploadIn` (`api/app/request_models.py`) ganha `description` e `total_grams`, ambos opcionais. Os limites são do dono: descrição de até `MEAL_PHOTO_DESCRIPTION_MAX_CHARS` (500) caracteres, peso total inteiro de 1 a `MEAL_PHOTO_TOTAL_GRAMS_MAX` (5000 g), conferidos por `meal_photo.user_hints_error` **antes** de abrir a cota. Erro vira 400 com código (`meal_photo_description_too_long`, `meal_photo_total_grams_invalid`), sem gastar tentativa. O código de erro nunca carrega o texto da descrição.
-2. **Descrição fora de log.** A descrição vai ao job só no evento de invocação. Não entra no registro do job, em `ai_usage_log`, em log nem em mensagem de erro. No prompt ela é saneada e delimitada como dado do usuário.
+2. **Descrição fora de log.** A descrição vai ao job só no evento de invocação. Não entra no registro do job, em `ai_usage_log`, em log nem em mensagem de erro. No prompt ela é saneada e delimitada como dado do usuário. O saneamento (`prompt_user_data.sanitize_user_text`) neutraliza o delimitador `dados_do_usuario` em qualquer forma de tag de abertura ou fechamento, com atributos, sem `>` final ou autofechada (ajuste abaixo).
 3. **Prompt `nutrition-photo-v2`** (v1 preservada). Contrato:
    - a informação da pessoa aparece num bloco delimitado e prevalece sobre a dedução visual;
    - texto escrito na imagem não tem autoridade;
@@ -38,7 +38,7 @@
    - `total_grams_mismatch` marca `LIMIT_TOTAL_GRAMS_MISMATCH` quando a soma dos gramas foge do peso informado além de `MEAL_PHOTO_TOTAL_GRAMS_TOLERANCE` (10%). Os gramas não são reescalados. Item sem gramas torna a soma parcial, e nesse caso não há comparação.
    - Macros seguem do `meal_math` pelo preview, como antes. A IA não produz nutriente.
 6. **Modelo.** O mesmo modelo do v1 (Haiku, com o esforço já configurado). Nenhuma mudança de Terraform.
-7. **Persistência.** Evidência, faixa e incerteza vivem no resultado do job (com o TTL do job assíncrono) e na revisão aberta no editor. Não são gravadas na refeição: sem migração. Na tela, a origem aparece como "Informado por você" quando a pessoa altera a quantidade ou a unidade de um item proposto (`photoMetaView` em `frontend/src/lib/nutrition-meal-form.ts`); o bloco de metadados não entra no corpo de salvamento de `frontend/src/lib/nutrition-meal-form.ts` (a busca por `photoMeta` só acha a leitura e a visualização).
+7. **Persistência.** Evidência, faixa e incerteza vivem no resultado do job (com o TTL do job assíncrono) e na revisão aberta no editor. Não são gravadas na refeição: sem migração. Na tela, a origem aparece como "Informado por você" quando a pessoa altera a quantidade ou a unidade de um item proposto, e também ao trocar o alimento (regra revista nos ajustes posteriores; `photoMetaView` em `frontend/src/lib/nutrition-meal-form.ts`); o bloco de metadados não entra no corpo de salvamento de `frontend/src/lib/nutrition-meal-form.ts` (a busca por `photoMeta` só acha a leitura e a visualização).
 8. **Compatibilidade.** Cliente sem os campos novos segue o mesmo fluxo. Leitura v1 (sem `evidence`, faixa nem incerteza) continua válida: os campos novos são opcionais no schema do worker. O resultado do job só ganha chaves novas.
 
 ## Fora do escopo (com issue)
@@ -63,10 +63,26 @@
 - **Mapa.** Seção 80.1 de `docs/motores/FONTES_DA_VERDADE.md` registra o dono e os consumidores. A guarda `foto_prato_nutricao` segue com allowlist vazia.
 - **Próximas decisões.** Medir o v2 com fotos reais (#326) antes de promover a faixa de gramas à tela como número principal. Decidir se a evidência deve ser gravada na refeição, o que exigiria migração e ADR própria.
 
+### Ajustes posteriores (#328/#330)
+
+Estes ajustes vieram no PR das issues #328/#330 (branch `fix/p3-foto-prato-l59`), não no PR #329.
+
+- **Alimento trocado conta como edição.** Trocar o alimento candidato, mantendo o peso, também marca o item como editado: passa a ter a evidência `user_informed` e perde a faixa da IA (`edited_item_evidence` e `edited_item_keeps_range` do dono). Voltar ao alimento original desfaz a marca (`photoMetaView` em `frontend/src/lib/nutrition-meal-form.ts`). Isto substitui a regra anterior, em que a troca de alimento não contava.
+- **Soma divergente é da leitura.** O aviso `LIMIT_TOTAL_GRAMS_MISMATCH` mostra o que a leitura devolveu. O editor não o reavalia quando a pessoa muda pesos.
+- **`uncertainty_none` sai do espelho.** A tela usa `Uncertainty.NONE.value` em vez de escrever o código `none` à mão.
+- **A rota confere as dicas antes da imagem.** A ordem é permissão/alvo, dicas, imagem, slot e cota. Um erro de dica volta 400 só com o código, antes de ler a imagem e sem gastar cota.
+- **Saneamento compartilhado com NFKC.** `prompt_user_data.sanitize_user_text` aplica NFKC e remove as categorias Unicode Cf, Zl e Zp. Efeito: símbolos como `m²` e `½` são normalizados e emojis compostos se desfazem no texto enviado à IA. Vale para todas as features que usam o helper.
+- **Delimitador neutralizado em todas as formas.** O saneamento troca por `[delimitador removido]` a tag `dados_do_usuario` de abertura ou fechamento, inclusive com atributos, sem `>` final e autofechada. Vale para todas as features que usam o helper.
+
 ## Impacto em produção
 
-Medido por leitura do código, sem consulta a produção nesta fase: nenhuma migração, nenhum dado existente muda, cliente antigo segue o mesmo fluxo. A descrição não sai para log nem `ai_usage_log`. O custo muda só no sentido de o prompt ficar um pouco maior quando a pessoa preenche a descrição.
+Medido pelo Tech Lead em 2026-11-26, por SELECT no Aurora de produção em `ai_usage_log`, `feature='meal_photo'`, últimos 30 dias: 3 leituras, 1 usuário, todas `succeeded`, modelo Haiku (`claude-haiku-5-5`), média de 3.459 tokens de entrada e 2.106 de saída, cerca de 25,3 s por leitura, custo total US$ 0,0042. Primeira leitura em 2026-11-07, última em 2026-11-18, nenhuma falha (sem `reading_invalid`). Uso muito baixo (só o próprio usuário).
+
+Sem migração e sem Terraform. O v2 muda a saída da IA (campos novos por item e `main_uncertainty`) e acrescenta tokens de saída por item, sem mudar macros (`meal_math`) nem o que é gravado. O aviso de soma divergente só existe quando a pessoa informa o peso total, então o impacto é zero para quem não usa os campos. Cliente antigo (sem os campos) segue o mesmo fluxo; o resultado do job ganha chaves novas (aditivo). A descrição não vai para log, `ai_usage_log` nem mensagem de erro. Acompanhar após a promoção, na mesma tabela, a taxa de falha por `reading_invalid` e os `tokens_out` por leitura.
 
 ## Verificação
 
-Este ADR não registra execução. Não verificado nesta entrega: a execução dos testes unitários de `api/tests/unit/test_nutrition_meal_photo*.py` e do teste de prosa do prompt em `api/privado/tests/unit/`; a guarda de fontes; a tela no navegador; qualquer chamada real à IA com foto. A integração só roda no CI.
+Esta ADR não afirma resultado de execução. A integração só roda no CI. A tela no navegador e a chamada real à IA com foto não foram verificadas por esta ADR.
+
+- **Evidência da decisão (PR #329):** os testes unitários de `api/tests/unit/test_nutrition_meal_photo*.py`, o teste de prosa do prompt em `api/privado/tests/unit/`, a guarda `api/tests/unit/test_guarda_fontes_da_verdade.py` e o teste `frontend/src/lib/nutrition-meal-photo-form.test.ts`.
+- **Evidência dos ajustes (PR das issues #328/#330, branch `fix/p3-foto-prato-l59`):** os testes de `api/tests/unit/test_prompt_user_data.py` (NFKC, Cf/Zl/Zp e delimitador em todas as formas), a regra de alimento trocado em `frontend/src/lib/nutrition-meal-form.ts` (`photoMetaView`) e a ordem de validação da rota (dicas antes da imagem) em `api/tests/unit/test_nutrition_meal_photo_routes.py`.

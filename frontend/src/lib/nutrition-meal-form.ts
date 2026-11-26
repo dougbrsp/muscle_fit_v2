@@ -65,6 +65,8 @@ export type MealEditorItem = {
   /** Lançamento rápido gravado: os 5 valores editáveis (sem busca, porção, unidade nem peso). */
   quick?: QuickEntryDraft | null;
   /** Evidência/faixa/incerteza do peso que a foto do prato (v2) entregou; só exibição, nunca vai à API. */
+  /** Alimento (`food_id`) antes da primeira troca pela pessoa; `undefined` = nunca trocou. Só para a evidência da foto. */
+  originalFoodId?: number | null;
   photoMeta?: { evidence: NutritionCode | null; gramsLow: number | null; gramsHigh: number | null; uncertainty: NutritionCode | null } | null;
 };
 
@@ -72,7 +74,9 @@ export type MealEditorItem = {
 export function photoMetaView(item: MealEditorItem) {
   const meta = item.photoMeta;
   if (!meta) return null;
-  const editado = item.proposal != null && (quantidade(item.quantity) !== quantidade(item.proposal.quantity) || item.unit !== item.proposal.unit);
+  const trocouAlimento = item.originalFoodId !== undefined && item.originalFoodId !== item.food_id;
+  const editado =
+    trocouAlimento || (item.proposal != null && (quantidade(item.quantity) !== quantidade(item.proposal.quantity) || item.unit !== item.proposal.unit));
   if (!editado) return meta;
   const mantem = MEAL_PHOTO.edited_item_keeps_range;
   return {
@@ -193,6 +197,7 @@ export function itemHasSource(item: MealEditorItem): boolean {
 export function chooseCandidate(item: MealEditorItem, candidate: MealParseCandidate): MealEditorItem {
   return {
     ...item,
+    originalFoodId: item.originalFoodId !== undefined ? item.originalFoodId : item.food_id,
     food_id: candidate.food_id,
     label: candidate.name,
     basis: candidate.basis ?? item.basis,
@@ -210,6 +215,7 @@ export function chooseEstimate(item: MealEditorItem): MealEditorItem {
   if (!item.estimate) return item;
   return {
     ...item,
+    originalFoodId: item.originalFoodId !== undefined ? item.originalFoodId : item.food_id,
     food_id: null,
     label: item.estimate.name,
     basis: AI_ESTIMATE_BASIS,

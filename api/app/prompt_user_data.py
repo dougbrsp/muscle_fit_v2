@@ -6,7 +6,8 @@ digitado pelo usuario entra no prompt como DADO, entre `<dados_do_usuario>` e
 `</dados_do_usuario>`, com a regra explicita de que ali dentro nao ha ordens.
 
 O saneamento:
-- remove caractere de controle;
+- normaliza em NFKC e remove formato invisivel/separador Unicode (Cf, Zl, Zp)
+  e caractere de controle (\n e \t ficam);
 - neutraliza qualquer ocorrencia do proprio delimitador (sem isso, um texto
   contendo `</dados_do_usuario>` fecharia o bloco e o resto viraria instrucao
   aos olhos do modelo);
@@ -17,8 +18,8 @@ Duas formas de delimitar, o mesmo saneamento:
   anotacao da serie), delimitadores em linhas proprias;
 - `user_data_inline` / `delimit_user_fields`: texto curto no meio de uma linha
   ou de um JSON (notas de serie, nome de treino/exercicio, notas de sono),
-  delimitadores colados ao texto. O conteudo chega INTEIRO (so muda o que o
-  saneamento muda); "dor no ombro esquerdo" continua "dor no ombro esquerdo".
+  delimitadores colados ao texto. O conteudo passa pelo saneamento (NFKC, remocao de
+  invisiveis, delimitador neutralizado); "dor no ombro esquerdo" continua igual.
 
 `user_data_rule()` e a frase unica que diz ao modelo que o conteudo delimitado
 e dado, nao instrucao (texto no repositorio privado, M103 P2). Todo prompt que
@@ -32,6 +33,7 @@ passando pelos limites do servidor (clamps, validador).
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Mapping, Optional
 
 from . import prompt_store
@@ -41,14 +43,20 @@ USER_DATA_OPEN = "<dados_do_usuario>"
 USER_DATA_CLOSE = "</dados_do_usuario>"
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_DELIMITER_RE = re.compile(r"</?\s*dados_do_usuario\s*>", re.IGNORECASE)
+_DELIMITER_RE = re.compile(r"<\s*/?\s*dados_do_usuario\b[^>\n]*>?", re.IGNORECASE)
+# Formato invisivel (zero-width, bidi) e separador de linha/paragrafo Unicode:
+# esconderiam o delimitador do regex ou quebrariam a linha sem `\n`.
+_INVISIBLE_CATEGORIES = frozenset({"Cf", "Zl", "Zp"})
 
 
 def sanitize_user_text(raw: Optional[str], max_chars: int) -> str:
     """Texto do usuario pronto para entrar no prompt como DADO (ver modulo)."""
     if not raw:
         return ""
-    text = _CONTROL_CHARS_RE.sub(" ", str(raw))
+    # NFKC dobra variantes (fullwidth `＜` -> `<`) antes do regex do delimitador.
+    text = unicodedata.normalize("NFKC", str(raw))
+    text = "".join(c for c in text if unicodedata.category(c) not in _INVISIBLE_CATEGORIES)
+    text = _CONTROL_CHARS_RE.sub(" ", text)
     text = _DELIMITER_RE.sub("[delimitador removido]", text)
     text = text.strip()
     if len(text) > max_chars:

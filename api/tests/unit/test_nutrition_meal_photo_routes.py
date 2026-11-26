@@ -371,6 +371,21 @@ def test_dicas_invalidas_dao_400_antes_da_cota_sem_eco_do_texto(monkeypatch, ext
     assert despacho.eventos == []
 
 
-def test_description_que_nao_e_string_da_422_sem_ecoar_string_legitima():
-    resposta = _enviar(_client(), description=123)
+def test_dica_invalida_vence_a_imagem_invalida(monkeypatch):
+    # #328: ordem permissão/alvo -> dicas -> imagem -> slot -> cota.
+    despacho = _Despacho(monkeypatch)
+    resposta = _enviar(_client(), dados=b"nao e imagem", total_grams=0)
+    assert resposta.status_code == 400
+    assert resposta.json()["detail"]["error"] == meal_photo.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID
+    assert despacho.eventos == []
+
+
+def test_description_que_nao_e_string_da_422_antes_da_cota_e_o_422_ecoa_a_entrada(monkeypatch):
+    # #330: o 422 do Pydantic (o mesmo formato do `validation_error_handler` de produção) devolve o `input`
+    # recusado; quem não ecoa o texto é o 400 das dicas, que só leva o código.
+    despacho = _Despacho(monkeypatch)
+    resposta = _enviar(_client(), description=["MARCADOR-422"])
     assert resposta.status_code == 422
+    erro = next(e for e in resposta.json()["detail"] if e["loc"][-1] == "description")
+    assert erro["input"] == ["MARCADOR-422"]
+    assert despacho.eventos == []

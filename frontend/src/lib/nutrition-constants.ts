@@ -273,7 +273,5 @@ export const MEAL_PHOTO: MealPhotoParams = NUTRITION.meal_photo;
 /** Evidência do peso do item e incerteza (rótulos do dono, `meal_photo.py`). */
 export const MEAL_PHOTO_EVIDENCE_OPTIONS = optionsOf(MEAL_PHOTO.evidences, MEAL_PHOTO.evidence_labels);
 export const MEAL_PHOTO_UNCERTAINTY_OPTIONS = optionsOf(MEAL_PHOTO.uncertainties, MEAL_PHOTO.uncertainty_labels);
-/** Códigos do dono usados só para decidir o que exibir (sem número): "sem incerteza" e "informado pela pessoa". */
-export const PHOTO_UNCERTAINTY_NONE: NutritionCode = 'none';
 /** Legibilidade que a leitura devolve (tabela legível, parcial, ilegível). */
 export const LABEL_LEGIBILITY_OPTIONS = optionsOf(NUTRITION.label_legibilities, NUTRITION.label_legibility_labels);

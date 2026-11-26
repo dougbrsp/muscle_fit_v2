@@ -5,7 +5,6 @@ import {
   MEAL_NATURE_OPTIONS,
   MEAL_PARSE_STATUS_OPTIONS,
   MEAL_PHOTO,
-  PHOTO_UNCERTAINTY_NONE,
   nutritionLabel,
 } from './nutrition-constants';
 import { chooseCandidate, chooseEstimate, itemsPayload, mealCreatePayload, mealPreviewPayload, photoMetaView } from './nutrition-meal-form';
@@ -106,6 +105,18 @@ describe('foto do prato: formulário', () => {
     expect(JSON.stringify(mealPreviewPayload(form))).not.toMatch(/evidence|grams_low|uncertainty/);
   });
 
+  it('trocar o alimento conta como edição; voltar ao original desfaz', () => {
+    const [estimado] = editorFormFromPhoto(
+      resultado([item({ evidence: 'observed', grams_low: 120, grams_high: 180, candidates: [CANDIDATO] })]),
+      { date: 'x', slot: null },
+    ).items;
+    expect(photoMetaView(estimado)).toMatchObject({ evidence: 'observed', gramsLow: 120 });
+    const trocado = chooseCandidate(estimado, CANDIDATO);
+    const mantem = MEAL_PHOTO.edited_item_keeps_range ? { gramsLow: 120, gramsHigh: 180 } : { gramsLow: null, gramsHigh: null };
+    expect(photoMetaView(trocado)).toMatchObject({ evidence: MEAL_PHOTO.edited_item_evidence, ...mantem });
+    expect(photoMetaView(chooseEstimate(trocado))).toMatchObject({ evidence: 'observed', gramsLow: 120 });
+  });
+
   it('trocar a origem atualiza o selo e o destaque, nos dois sentidos', () => {
     const [estimado] = editorFormFromPhoto(resultado([item({ candidates: [CANDIDATO] })]), { date: 'x', slot: null }).items;
     const noCatalogo = chooseCandidate(estimado, CANDIDATO);
@@ -136,8 +147,8 @@ describe('foto do prato: formulário', () => {
 });
 
 describe('paridade dos códigos fixos da foto com o espelho do motor', () => {
-  it('PHOTO_UNCERTAINTY_NONE e a evidência do item editado existem nos enums do dono', () => {
-    expect(MEAL_PHOTO.uncertainties).toContain(PHOTO_UNCERTAINTY_NONE);
+  it('uncertainty_none e a evidência do item editado existem nos enums do dono', () => {
+    expect(MEAL_PHOTO.uncertainties).toContain(MEAL_PHOTO.uncertainty_none);
     expect(MEAL_PHOTO.evidences).toContain(MEAL_PHOTO.edited_item_evidence);
   });
 });

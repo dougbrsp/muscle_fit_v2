@@ -140,6 +140,13 @@ const esperar = async (vezes = 4) => {
   for (let i = 0; i < vezes; i++) await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
 };
 
+// Espera por condição (não por tempo fixo): a suíte da pasta roda em paralelo e o jsdom fica lento sob carga.
+const aguardar = async (cond: () => unknown) => {
+  await act(async () => {
+    await vi.waitFor(() => expect(cond()).toBeTruthy(), { timeout: 4000, interval: 25 });
+  });
+};
+
 const onSaved = vi.fn();
 const onCancel = vi.fn();
 
@@ -161,6 +168,7 @@ async function montar(initialForm = form(), chave = 'a') {
   await act(async () => {
     root!.render(arvore(initialForm, chave));
   });
+  await aguardar(() => host.querySelector('label'));
   await esperar();
 }
 
@@ -188,9 +196,9 @@ async function digitar(el: HTMLInputElement, valor: string) {
 async function escolherFrango() {
   const campo = Array.from(host.querySelectorAll('input')).find((i) => i.getAttribute('placeholder') === 'Escolha o alimento') as HTMLInputElement;
   await act(async () => { campo.click(); campo.focus(); });
-  await esperar(2);
-  const opcao = Array.from(document.querySelectorAll('[role="option"]')).find((o) => o.textContent?.includes('Frango grelhado')) as HTMLElement;
-  expect(opcao).toBeDefined();
+  const achar = () => Array.from(document.querySelectorAll('[role="option"]')).find((o) => o.textContent?.includes('Frango grelhado')) as HTMLElement | undefined;
+  await aguardar(achar);
+  const opcao = achar()!;
   await act(async () => { opcao.click(); });
   await esperar(2);
 }

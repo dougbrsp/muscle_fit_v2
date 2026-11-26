@@ -325,3 +325,23 @@ def test_espelho_da_foto_exporta_piso_rotulos_e_regra_do_item_editado():
     assert str(mp.MEAL_PHOTO_DESCRIPTION_MAX_CHARS) in bloco["description_too_long_label"]
     assert bloco["edited_item_evidence"] == mp.ItemEvidence.USER_INFORMED.value
     assert bloco["edited_item_keeps_range"] is False
+    assert bloco["uncertainty_none"] == mp.Uncertainty.NONE.value
+
+
+def test_item_invalido_no_meio_nao_desalinha_detalhe_nem_faixa():
+    a = _item(name="arroz", evidence="observed", grams_low=100, grams_high=140)
+    b = _item(name="feijao", evidence="user_informed", uncertainty="hidden_portion")
+    revisao = mp.review_reading(_leitura(a, {"name": "  "}, "lixo", b))
+    assert [i.name for i in revisao.items] == ["arroz", "feijao"]
+    d0, d1 = revisao.details
+    assert (d0.evidence, d0.grams_low, d0.grams_high) == (mp.ItemEvidence.OBSERVED, 100, 140)
+    assert (d1.evidence, d1.grams_low, d1.uncertainty) == (mp.ItemEvidence.USER_INFORMED, None, mp.Uncertainty.HIDDEN_PORTION)
+
+
+def test_corte_no_teto_mantem_detalhe_alinhado_ao_item():
+    itens = [_item(name=f"alimento {n}", grams_low=120, grams_high=121 + n) for n in range(diary.MEAL_MAX_ITEMS + 2)]
+    revisao = mp.review_reading(_leitura({"name": None}, *itens))
+    assert len(revisao.items) == len(revisao.details) == diary.MEAL_MAX_ITEMS
+    assert revisao.limitations == (meal_parse.LIMIT_ITEMS_TRUNCATED,)
+    assert revisao.items[-1].name == f"alimento {diary.MEAL_MAX_ITEMS - 1}"
+    assert revisao.details[-1].grams_high == 121 + diary.MEAL_MAX_ITEMS - 1

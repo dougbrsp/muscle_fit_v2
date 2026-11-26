@@ -15,6 +15,7 @@ import {
   TextInput,
   Textarea,
   Title,
+  VisuallyHidden,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconPhoto, IconSparkles, IconTrash } from '@tabler/icons-react';
@@ -32,7 +33,7 @@ import {
   MEAL_PHOTO_EVIDENCE_OPTIONS,
   MEAL_PHOTO_UNCERTAINTY_OPTIONS,
   MEAL_SLOT_OPTIONS,
-  PHOTO_UNCERTAINTY_NONE,
+  MEAL_PHOTO,
   UNIT_OPTIONS,
   nutritionLabel,
   nutritionNotice,
@@ -277,7 +278,7 @@ function ItemRow({
               {meta.gramsLow}–{meta.gramsHigh} g
             </Text>
           )}
-          {meta.uncertainty && meta.uncertainty !== PHOTO_UNCERTAINTY_NONE && (
+          {meta.uncertainty && meta.uncertainty !== MEAL_PHOTO.uncertainty_none && (
             <Text size="xs" c={BRAND.textMuted} data-testid="item-incerteza">
               {nutritionLabel(MEAL_PHOTO_UNCERTAINTY_OPTIONS, meta.uncertainty)}
             </Text>
@@ -503,7 +504,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           <Alert color="brand" variant="light" icon={<IconSparkles size={16} />}>
             <Text size="sm">Confira os alimentos e as quantidades antes de salvar.</Text>
             {form.ai.notes && <Text size="sm">{form.ai.notes}</Text>}
-            {form.ai.mainUncertainty && form.ai.mainUncertainty !== PHOTO_UNCERTAINTY_NONE && (
+            {form.ai.mainUncertainty && form.ai.mainUncertainty !== MEAL_PHOTO.uncertainty_none && (
               <Text size="sm" data-testid="principal-incerteza">
                 Principal incerteza: {nutritionLabel(MEAL_PHOTO_UNCERTAINTY_OPTIONS, form.ai.mainUncertainty)}
               </Text>
@@ -704,7 +705,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           </Alert>
         )}
         {preview.data && corpoPreview && (
-          <Stack gap="xs" aria-busy={preview.isPlaceholderData} style={preview.isPlaceholderData ? { opacity: 0.5 } : undefined}>
+          <Stack gap="xs" aria-busy={preview.isPlaceholderData} style={preview.isPlaceholderData ? { opacity: 0.7 } : undefined}>
+            {preview.isPlaceholderData && <VisuallyHidden role="status">Recalculando…</VisuallyHidden>}
             <Group gap="xs">
               <Text size="sm" fw={600} c={BRAND.textPrimary}>
                 Calculado pelo motor
