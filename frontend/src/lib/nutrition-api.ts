@@ -493,33 +493,42 @@ export function fetchMealPhotoUsage(): Promise<AiQuota> {
   return apiFetch<AiQuota>('/nutrition/meals/photo/usage');
 }
 
-export type MealPhotoContext = Omit<MealPhotoPayload, 'image_base64'>;
+export type MealPhotoContext = Omit<MealPhotoPayload, 'images_base64'>;
 
-/** Envia a foto JÁ REDUZIDA como base64 sem padding (motivo em `uploadLabelPhoto`). */
-export async function uploadMealPhoto(photo: Blob, context: MealPhotoContext): Promise<MealPhotoDispatch> {
-  const payload: MealPhotoPayload = { ...context, image_base64: await blobToBase64(photo, { padding: false }) };
+/** Envia as fotos JÁ REDUZIDAS (1 a `MEAL_PHOTO.images_per_reading`) como base64 sem padding (motivo em `uploadLabelPhoto`). */
+export async function uploadMealPhoto(photos: Blob[], context: MealPhotoContext): Promise<MealPhotoDispatch> {
+  const images_base64 = await Promise.all(photos.map((p) => blobToBase64(p, { padding: false })));
+  const payload: MealPhotoPayload = { ...context, images_base64 };
   return apiFetch<MealPhotoDispatch>('/nutrition/meals/photo', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 /**
- * Foto escolhida -> redução por canvas (sempre; se o navegador não conseguir, NADA é
- * enviado) -> upload -> polling do job até o prazo que a API devolveu. Resolve com os
- * itens lidos; lista vazia = foto sem comida ou não identificada, com o motivo em
- * `limitations`.
+ * Fotos escolhidas -> redução por canvas de cada uma (sempre; se o navegador não conseguir,
+ * NADA é enviado) -> soma acima de `MEAL_PHOTO.total_max_bytes` não envia -> upload -> polling
+ * do job até o prazo que a API devolveu. Resolve com os itens lidos; lista vazia = foto sem
+ * comida ou não identificada, com o motivo em `limitations`.
  */
 export async function readMealPhoto(
-  file: Blob,
+  files: Blob[],
   context: MealPhotoContext,
   onStage?: (stage: LabelPhotoStage) => void,
-): Promise<{ result: MealPhotoResult; photo: Blob }> {
+): Promise<{ result: MealPhotoResult; photos: Blob[] }> {
   onStage?.('resizing');
-  const reduzida = await resizeImageForUpload(file, {
-    maxEdge: MEAL_PHOTO.resize_max_edge_px,
-    quality: MEAL_PHOTO.resize_quality,
-    contentType: MEAL_PHOTO.content_type,
-  });
+  const reduzidas: Blob[] = [];
+  for (const file of files) {
+    reduzidas.push(
+      await resizeImageForUpload(file, {
+        maxEdge: MEAL_PHOTO.resize_max_edge_px,
+        quality: MEAL_PHOTO.resize_quality,
+        contentType: MEAL_PHOTO.content_type,
+      }),
+    );
+  }
+  if (reduzidas.reduce((soma, r) => soma + r.size, 0) > MEAL_PHOTO.total_max_bytes) {
+    throw new Error(MEAL_PHOTO.total_too_large_label);
+  }
   onStage?.('uploading');
-  const despacho = await uploadMealPhoto(reduzida, context);
+  const despacho = await uploadMealPhoto(reduzidas, context);
   onStage?.('reading');
   const prazo = despacho.poll_timeout_seconds;
   const result = await pollAsyncJob<MealPhotoResult>(despacho.job_id, {
@@ -527,8 +536,8 @@ export async function readMealPhoto(
     failedFallbackMessage: 'Não foi possível analisar a foto. Tente de novo.',
     timeoutMessage: 'A análise da foto demorou demais. Tente de novo em instantes.',
   });
-  // A versão reduzida (a que o servidor recebeu) é a que o rascunho guarda; o original não.
-  return { result, photo: reduzida };
+  // As versões reduzidas (as que o servidor recebeu) é que o rascunho guarda; os originais não.
+  return { result, photos: reduzidas };
 }
 
 type StructuredDetail = {

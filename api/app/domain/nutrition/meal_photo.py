@@ -11,7 +11,9 @@ copiar; os itens, o casamento e a proposta, de `meal_parse`; os nutrientes, de
 
 - Upload (`POST /nutrition/meals/photo`, api-core): as regras de `label_photo`, com
   códigos próprios (`ERR_MEAL_PHOTO_*`), porque o texto do erro não pode falar de
-  rótulo. Uma imagem por leitura.
+  rótulo. Até `MEAL_PHOTO_IMAGES_PER_READING` fotos da mesma refeição por leitura
+  (#325), cada uma no teto de `label_photo` e a soma em `MEAL_PHOTO_TOTAL_MAX_BYTES`;
+  a leitura conta 1 da cota. O campo antigo de uma foto segue aceito (`upload_texts`).
 - Chave S3: `nutrition-meals/{user_id}/{uuid hex}.jpg`, só ids internos.
   `is_meal_photo_key_of` confere que a chave é do usuário (o worker não lê foto de
   outro). Retenção de `MEAL_PHOTO_RETENTION_DAYS` (1 d: a foto só é lida uma vez pelo
@@ -85,7 +87,16 @@ MEAL_PHOTO_MAX_BYTES: Final[int] = label_photo.LABEL_PHOTO_MAX_BYTES
 MEAL_PHOTO_CONTENT_TYPE: Final[str] = label_photo.LABEL_PHOTO_CONTENT_TYPE
 MEAL_PHOTO_S3_PREFIX: Final[str] = "nutrition-meals"
 MEAL_PHOTO_RETENTION_DAYS: Final[int] = 1
-MEAL_PHOTO_IMAGES_PER_READING: Final[int] = 1
+# Até 3 fotos da mesma refeição numa leitura (issue #325, decisão do usuário 2026-11-26);
+# a leitura inteira conta 1 da cota diária.
+MEAL_PHOTO_IMAGES_PER_READING: Final[int] = 3
+# Teto da SOMA dos bytes decodificados das fotos de uma leitura. O corpo chega à
+# api-core pelo payload síncrono da Lambda (6 MiB, evento do API Gateway inteiro).
+# 3 MiB decodificados viram 4 MiB de base64 (4/3); sobram ~2 MiB para o JSON, as
+# dicas da pessoa e o envelope do evento. 3 fotos no teto individual (1,5 MiB cada =
+# 6 MiB de base64) estourariam; a tela manda ~0,2-0,5 MiB por foto (1280 px, 85 %).
+MEAL_PHOTO_TOTAL_MAX_MIB: Final[float] = 3.0
+MEAL_PHOTO_TOTAL_MAX_BYTES: Final[int] = int(MEAL_PHOTO_TOTAL_MAX_MIB * label_photo.BYTES_PER_MIB)
 MEAL_IMAGE_DETAIL: Final[str] = label_photo.LABEL_IMAGE_DETAIL
 
 ERR_MEAL_PHOTO_EMPTY = "meal_photo_empty"
@@ -98,6 +109,10 @@ ERR_MEAL_PHOTO_KEY_INVALID = "meal_photo_key_invalid"
 ERR_MEAL_PHOTO_NOT_FOUND = "meal_photo_not_found"
 ERR_MEAL_READING_INVALID = "meal_photo_reading_invalid"
 ERR_MEAL_READING_UNEXPECTED = "meal_photo_reading_unexpected"
+# Várias fotos (#325): quantidade fora de 1..IMAGES_PER_READING (ou os dois campos /
+# nenhum) e soma acima do teto.
+ERR_MEAL_PHOTO_COUNT_INVALID = "meal_photo_count_invalid"
+ERR_MEAL_PHOTO_TOTAL_TOO_LARGE = "meal_photo_total_too_large"
 
 # Dicas da pessoa no upload (issue #323): opcionais, conferidas antes da cota.
 MEAL_PHOTO_DESCRIPTION_MAX_CHARS: Final[int] = 500
@@ -138,6 +153,23 @@ def upload_error(size_bytes: int, content_type: Optional[str]) -> Optional[str]:
     """Código do erro do upload (vazio, grande demais, tipo fora) ou None."""
     erro = label_photo.upload_error(size_bytes, content_type)
     return _UPLOAD_ERRORS[erro] if erro else None
+
+
+def upload_texts(single: Any, many: Any) -> tuple[list[Any], Optional[str]]:
+    """Os textos base64 do upload: o campo antigo (`image_base64`, uma foto) OU a lista
+    (`images_base64`, 1..IMAGES_PER_READING). Os dois, nenhum ou quantidade fora vira
+    `ERR_MEAL_PHOTO_COUNT_INVALID` (cada texto é conferido depois por `decode_upload`)."""
+    if (single is None) == (many is None):
+        return [], ERR_MEAL_PHOTO_COUNT_INVALID
+    textos = [single] if many is None else list(many)
+    if not 1 <= len(textos) <= MEAL_PHOTO_IMAGES_PER_READING:
+        return [], ERR_MEAL_PHOTO_COUNT_INVALID
+    return textos, None
+
+
+def total_size_error(sizes: Any) -> Optional[str]:
+    """Soma dos bytes das fotos de uma leitura acima de `MEAL_PHOTO_TOTAL_MAX_BYTES`?"""
+    return ERR_MEAL_PHOTO_TOTAL_TOO_LARGE if sum(sizes) > MEAL_PHOTO_TOTAL_MAX_BYTES else None
 
 
 def meal_photo_key(user_id: Any, photo_id: str) -> str:
@@ -305,6 +337,12 @@ def item_nature(item: ParsedItem) -> Optional[MealNature]:
 
 
 __all__ = [
+    "ERR_MEAL_PHOTO_COUNT_INVALID",
+    "ERR_MEAL_PHOTO_TOTAL_TOO_LARGE",
+    "MEAL_PHOTO_TOTAL_MAX_BYTES",
+    "MEAL_PHOTO_TOTAL_MAX_MIB",
+    "total_size_error",
+    "upload_texts",
     "ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG",
     "ERR_MEAL_PHOTO_DISPATCH_FAILED",
     "ERR_MEAL_PHOTO_EMPTY",

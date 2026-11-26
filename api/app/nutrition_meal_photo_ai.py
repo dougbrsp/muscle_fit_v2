@@ -30,13 +30,16 @@ confere).
   segue sem autoridade); por item `evidence`, `grams_low`/`grams_high` e `uncertainty`,
   e `main_uncertainty` na leitura (enums do dono `meal_photo`). Os campos novos são
   opcionais na validação: leitura sem eles continua válida.
+- nutrition-photo-v3 (2026-11-26, issue #325): até `meal_photo.MEAL_PHOTO_IMAGES_PER_READING`
+  fotos da mesma refeição numa chamada só (um `ImageInput` por foto; `fotos_max` no
+  prompt). O evento leva `s3_keys`; o `s3_key` antigo segue aceito.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence, Union
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, ValidationError, create_model
 
@@ -57,7 +60,7 @@ from .prompt_user_data import sanitize_user_text, user_data_block, user_data_rul
 
 logger = logging.getLogger("musclefit.nutrition.meal_photo_ai")
 
-PROMPT_VERSION = "nutrition-photo-v2"
+PROMPT_VERSION = "nutrition-photo-v3"
 # Pasta do template em `api/privado/prompts/`.
 PROMPT_FEATURE_DIR = "nutrition_meal_photo"
 FEATURE = AiFeature.MEAL_PHOTO.value
@@ -114,6 +117,7 @@ def prompt_values() -> dict[str, str]:
         "incerteza_gordura": meal_photo.Uncertainty.ADDED_FAT.value,
         "incerteza_identidade": meal_photo.Uncertainty.IDENTITY.value,
         "incerteza_partes": meal_photo.Uncertainty.INEDIBLE_PARTS.value,
+        "fotos_max": str(meal_photo.MEAL_PHOTO_IMAGES_PER_READING),
     }
 
 
@@ -232,22 +236,25 @@ class MealPhotoReading:
     model: str
     tokens_in: Optional[int]
     tokens_out: Optional[int]
+    photos_read: int = 1
 
 
 def read_meal_photo(
-    image: bytes,
+    images: Union[bytes, Sequence[bytes]],
     *,
     user_id: Any = None,
     timeout: float = LLM_TIMEOUT_SECONDS,
     description: Any = None,
     total_grams: Optional[int] = None,
 ) -> MealPhotoReading:
-    """Uma chamada com a foto e as dicas da pessoa. `OpenAIGenerationError` da chamada
+    """Uma chamada com as fotos da mesma refeição (uma `ImageInput` por foto; `bytes`
+    soltos valem como uma foto) e as dicas da pessoa. `OpenAIGenerationError` da chamada
     propaga; forma inválida vira `MealPhotoJobError(ERR_MEAL_READING_INVALID)` com os
     tokens gastos."""
+    fotos = [images] if isinstance(images, (bytes, bytearray)) else list(images)
     resultado = openai_client.call_openai_structured_vision(
         build_prompt(description=description, total_grams=total_grams),
-        [ImageInput(image, meal_photo.MEAL_PHOTO_CONTENT_TYPE, meal_photo.MEAL_IMAGE_DETAIL)],
+        [ImageInput(foto, meal_photo.MEAL_PHOTO_CONTENT_TYPE, meal_photo.MEAL_IMAGE_DETAIL) for foto in fotos],
         model_name(),
         output_schema(),
         schema_name=SCHEMA_NAME,
@@ -268,7 +275,8 @@ def read_meal_photo(
             tokens_out=resultado.tokens_out,
         ) from exc
     return MealPhotoReading(
-        data=leitura.model_dump(), model=resultado.model, tokens_in=resultado.tokens_in, tokens_out=resultado.tokens_out
+        data=leitura.model_dump(), model=resultado.model, tokens_in=resultado.tokens_in, tokens_out=resultado.tokens_out,
+        photos_read=len(fotos),
     )
 
 
@@ -301,6 +309,7 @@ def job_result(
         **corpo,
         "plate_status": status.value,
         "main_uncertainty": principal.value if principal else None,
+        "photos_read": reading.photos_read,
         "job_id": payload.get("job_id"),
         "user_id": aluno,
         "local_date": payload.get("local_date"),
@@ -325,25 +334,38 @@ def run_meal_photo_job(event: Mapping[str, Any]) -> dict[str, Any]:
     é SUCESSO com resultado vazio: a IA respondeu e a tentativa custou tokens."""
     usage_id = event.get("ai_usage_id")
     user_id = event.get("user_id")
-    key = event.get("s3_key")
+    # `s3_keys` (#325); `s3_key` antigo: job enfileirado antes do deploy.
+    keys = event.get("s3_keys")
+    keys = [event.get("s3_key")] if keys is None else keys
     payload = event.get("payload") or {}
     leitura: Optional[MealPhotoReading] = None
     try:
-        if not meal_photo.is_meal_photo_key_of(key, user_id):
+        # Toda chave do usuário, antes de ler qualquer uma; quantidade no teto do dono.
+        if (
+            not isinstance(keys, list)
+            or not 1 <= len(keys) <= meal_photo.MEAL_PHOTO_IMAGES_PER_READING
+            or not all(meal_photo.is_meal_photo_key_of(key, user_id) for key in keys)
+        ):
             raise MealPhotoJobError(meal_photo.ERR_MEAL_PHOTO_KEY_INVALID)
-        try:
-            imagem = nutrition_meal_photo_storage.read_meal_photo(str(key))
-        except nutrition_meal_photo_storage.MealPhotoStorageError as exc:
-            raise MealPhotoJobError(exc.code) from exc
-        # Defesa: a api-core já conferiu tamanho e tipo antes de gravar.
-        erro = meal_photo.upload_error(len(imagem), meal_photo.MEAL_PHOTO_CONTENT_TYPE)
+        imagens: list[bytes] = []
+        for key in keys:
+            try:
+                imagem = nutrition_meal_photo_storage.read_meal_photo(str(key))
+            except nutrition_meal_photo_storage.MealPhotoStorageError as exc:
+                raise MealPhotoJobError(exc.code) from exc
+            # Defesa: a api-core já conferiu tamanho e tipo antes de gravar.
+            erro = meal_photo.upload_error(len(imagem), meal_photo.MEAL_PHOTO_CONTENT_TYPE)
+            if erro:
+                raise MealPhotoJobError(erro)
+            imagens.append(imagem)
+        erro = meal_photo.total_size_error(len(imagem) for imagem in imagens)
         if erro:
             raise MealPhotoJobError(erro)
         # Dicas da pessoa (#323), já conferidas na api-core; nunca vão para log. Defesa:
         # total fora da faixa do dono é ignorado.
         total = payload.get("total_grams")
         total = None if meal_photo.user_hints_error(None, total) else total
-        leitura = read_meal_photo(imagem, user_id=user_id, description=payload.get("description"), total_grams=total)
+        leitura = read_meal_photo(imagens, user_id=user_id, description=payload.get("description"), total_grams=total)
         revisao = meal_photo.review_reading(leitura.data, total_grams=total)
         solicitante = int(user_id)
         aluno = int(payload.get("diary_user_id") or solicitante)

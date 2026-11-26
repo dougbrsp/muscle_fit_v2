@@ -326,18 +326,15 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const leitorAberto = useScannerOpen();
   const queryClient = useQueryClient();
   // Rever a foto da análise: object URL criado aqui e revogado ao fechar o editor (salvar ou cancelar desmontam).
-  const foto = form.photo ?? null;
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const fotos = form.photos ?? [];
+  const [fotoUrls, setFotoUrls] = useState<string[]>([]);
   const [verFoto, setVerFoto] = useState(false);
   useEffect(() => {
-    if (!foto) {
-      setFotoUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(foto);
-    setFotoUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [foto]);
+    const urls = fotos.map((f) => URL.createObjectURL(f));
+    setFotoUrls(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.photos]);
 
   /** Payload de gravação sobre o form com as quantidades ainda em foco (blur/clique fora de ordem) já aplicadas. */
   function formEfetivo(): MealEditorForm {
@@ -516,7 +513,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             ))}
           </Alert>
         )}
-        {fotoUrl && (
+        {fotoUrls.length > 0 && (
           <Stack gap="xs">
             <Group>
               <Button
@@ -527,13 +524,19 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
                 aria-expanded={verFoto}
                 onClick={() => setVerFoto((aberta) => !aberta)}
               >
-                {verFoto ? 'Ocultar foto' : 'Ver foto'}
+                {verFoto ? (fotoUrls.length > 1 ? 'Ocultar fotos' : 'Ocultar foto') : fotoUrls.length > 1 ? 'Ver fotos' : 'Ver foto'}
               </Button>
             </Group>
-            {verFoto && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoUrl} alt="Foto do prato enviada para análise" style={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 8 }} />
-            )}
+            {verFoto &&
+              fotoUrls.map((url, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={url}
+                  src={url}
+                  alt={fotoUrls.length > 1 ? `Foto ${i + 1} de ${fotoUrls.length} do prato enviada para análise` : 'Foto do prato enviada para análise'}
+                  style={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 8 }}
+                />
+              ))}
           </Stack>
         )}
         <Group gap="sm" align="flex-end" wrap="wrap">

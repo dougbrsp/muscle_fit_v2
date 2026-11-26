@@ -2,8 +2,9 @@
 api-core (`{proxy+}`), no mesmo desenho da foto do rótulo (`nutrition_label_photo`).
 
 Rotas (prefixo `/nutrition/meals/photo`):
-- `POST ""`      `MealPhotoUploadIn` (a foto JÁ REDUZIDA pela tela, em JPEG, base64 sem
-                 padding) -> 202 `{job_id, status, poll_timeout_seconds}`. Ordem: acesso
+- `POST ""`      `MealPhotoUploadIn` (até `MEAL_PHOTO_IMAGES_PER_READING` fotos da mesma
+                 refeição, #325, JÁ REDUZIDAS pela tela, em JPEG, base64 sem padding; uma
+                 chave S3 por foto e `s3_keys` no job; a leitura conta 1 da cota) -> 202 `{job_id, status, poll_timeout_seconds}`. Ordem: acesso
                  ao aluno (403/404) -> tamanho, alfabeto, tipo e refeição (413/400/415,
                  não gastam cota) -> reserva da cota (429 `ai_quota_exceeded`) -> S3
                  `nutrition-meals/{quem pede}/{uuid}.jpg` -> job no DynamoDB -> vínculo
@@ -58,6 +59,7 @@ _STATUS_BY_UPLOAD_ERROR: dict[str, int] = {
     meal_photo.ERR_MEAL_PHOTO_INVALID_ENCODING: 400,
     meal_photo.ERR_MEAL_PHOTO_TOO_LARGE: 413,
     meal_photo.ERR_MEAL_PHOTO_UNSUPPORTED_TYPE: 415,
+    meal_photo.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE: 413,
 }
 
 
@@ -91,11 +93,20 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
     erro = meal_photo.user_hints_error(payload.description, payload.total_grams)
     if erro:
         raise _error(400, erro)
-    dados, erro = meal_photo.decode_upload(payload.image_base64)
-    dados = dados or b""
-    erro = erro or meal_photo.upload_error(len(dados), sniff_image_content_type(dados[:label_photo.PHOTO_SNIFF_BYTES]))
+    textos, erro = meal_photo.upload_texts(payload.image_base64, payload.images_base64)
     if erro:
-        raise _error(_STATUS_BY_UPLOAD_ERROR[erro], erro, max_bytes=meal_photo.MEAL_PHOTO_MAX_BYTES)
+        raise _error(400, erro, max_images=meal_photo.MEAL_PHOTO_IMAGES_PER_READING)
+    fotos: list[bytes] = []
+    for texto in textos:
+        dados, erro = meal_photo.decode_upload(texto)
+        dados = dados or b""
+        erro = erro or meal_photo.upload_error(len(dados), sniff_image_content_type(dados[:label_photo.PHOTO_SNIFF_BYTES]))
+        if erro:
+            raise _error(_STATUS_BY_UPLOAD_ERROR[erro], erro, max_bytes=meal_photo.MEAL_PHOTO_MAX_BYTES)
+        fotos.append(dados)
+    erro = meal_photo.total_size_error(len(dados) for dados in fotos)
+    if erro:
+        raise _error(_STATUS_BY_UPLOAD_ERROR[erro], erro, max_bytes=meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES)
     slot = diary.normalize_meal_slot(payload.meal_slot)
     if payload.meal_slot is not None and slot is None:
         raise _error(400, diary.ERR_INVALID_MEAL_SLOT)
@@ -113,10 +124,10 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
         user_id=solicitante,
         feature=FEATURE,
         prompt_version=PROMPT_VERSION,
-        image_count=meal_photo.MEAL_PHOTO_IMAGES_PER_READING,
+        image_count=len(fotos),
     )
     try:
-        chave = nutrition_meal_photo_storage.put_meal_photo(solicitante, dados)
+        chaves = [nutrition_meal_photo_storage.put_meal_photo(solicitante, dados) for dados in fotos]
     except nutrition_meal_photo_storage.MealPhotoStorageError as exc:
         logger.exception("Falha ao gravar a foto do prato (ai_usage_id=%s)", usage_id)
         _close_failed(usage_id, exc.code)
@@ -130,7 +141,7 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
     try:
         job_id = async_jobs.create_job(
             MEAL_PHOTO_JOB_TYPE,
-            request={**pedido, "s3_key": chave, "ai_usage_id": usage_id},
+            request={**pedido, "s3_keys": chaves, "ai_usage_id": usage_id},
             owner_user_id=solicitante,
         )
     except Exception as exc:  # noqa: BLE001 - DynamoDB fora: nada foi despachado
@@ -147,7 +158,8 @@ def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Id
                 "job_kind": MEAL_PHOTO_JOB_TYPE,
                 "user_id": solicitante,
                 "ai_usage_id": usage_id,
-                "s3_key": chave,
+                "s3_keys": chaves,
+                "s3_key": chaves[0],  # worker antigo na janela do deploy lê só esta
                 # O `job_id` também no payload: o resultado o devolve, e a tela grava a
                 # refeição com ele (`ai_job_id`, origem `ai_photo`).
                 # As dicas só no evento (não no registro do job): vão até a chamada do modelo.

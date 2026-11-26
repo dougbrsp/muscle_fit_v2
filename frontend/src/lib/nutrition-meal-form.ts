@@ -105,8 +105,8 @@ export type MealEditorForm = {
     /** Principal incerteza da leitura da foto (v2); só exibição. */
     mainUncertainty?: NutritionCode | null;
   } | null;
-  /** Foto do prato enviada à análise: só no cliente, pelo tempo de vida do rascunho; nunca entra nos corpos da API. */
-  photo?: Blob | null;
+  /** Fotos do prato enviadas à análise (reduzidas): só no cliente, pelo tempo de vida do rascunho; nunca entra nos corpos da API. */
+  photos?: Blob[];
 };
 
 const SEM_LEITURA: Pick<

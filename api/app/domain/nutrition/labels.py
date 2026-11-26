@@ -932,6 +932,12 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     mp_mod.ERR_MEAL_PHOTO_TOO_LARGE: (
         f"Foto maior que {_decimal(lp_mod.LABEL_PHOTO_MAX_MIB)} MB mesmo depois de reduzida. Tire outra foto."
     ),
+    mp_mod.ERR_MEAL_PHOTO_COUNT_INVALID: (
+        f"Envie de 1 a {mp_mod.MEAL_PHOTO_IMAGES_PER_READING} fotos da mesma refeição."
+    ),
+    mp_mod.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE: (
+        f"As fotos juntas passam de {_decimal(mp_mod.MEAL_PHOTO_TOTAL_MAX_MIB)} MB. Envie menos fotos ou tire outras."
+    ),
     mp_mod.ERR_MEAL_PHOTO_UNSUPPORTED_TYPE: "Formato de imagem não aceito: a tela envia a foto reduzida em JPEG.",
     mp_mod.ERR_MEAL_PHOTO_INVALID_ENCODING: "A foto chegou corrompida. Escolha a foto de novo.",
     mp_mod.ERR_MEAL_PHOTO_STORAGE_FAILED: "Não foi possível guardar a foto agora. Tente de novo em instantes.",

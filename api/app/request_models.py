@@ -497,10 +497,15 @@ class MealPhotoUploadIn(_StrictIn):
     são do motor (`meal_photo.decode_upload`, `upload_error`, `diary`).
     `description` e `total_grams` (#323): dicas opcionais da pessoa; teto e faixa
     são do motor (`meal_photo.user_hints_error`, 400 antes da cota). Ausentes =
-    cliente antigo, mesmo fluxo."""
+    cliente antigo, mesmo fluxo.
+    `images_base64` (#325): até `meal_photo.MEAL_PHOTO_IMAGES_PER_READING` fotos da mesma
+    refeição; exatamente um dos dois campos de imagem. Quantidade e teto somado são do
+    motor (`meal_photo.upload_texts`, `total_size_error`): sem `max_length` aqui, o 422
+    do Pydantic ecoaria o base64."""
 
     user_id: Optional[int] = None
-    image_base64: str
+    image_base64: Optional[StrictStr] = None
+    images_base64: Optional[list[StrictStr]] = None
     local_date: date
     meal_slot: Optional[str] = Field(default=None, max_length=24)
     # Sem `max_length` aqui: o 422 do Pydantic ecoa o `input`, e a descrição nunca vai

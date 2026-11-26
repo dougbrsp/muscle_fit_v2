@@ -345,3 +345,48 @@ def test_corte_no_teto_mantem_detalhe_alinhado_ao_item():
     assert revisao.limitations == (meal_parse.LIMIT_ITEMS_TRUNCATED,)
     assert revisao.items[-1].name == f"alimento {diary.MEAL_MAX_ITEMS - 1}"
     assert revisao.details[-1].grams_high == 121 + diary.MEAL_MAX_ITEMS - 1
+
+
+# ---------------------------------------------------------------------------
+# Várias fotos da mesma refeição (#325)
+# ---------------------------------------------------------------------------
+
+
+def test_ate_tres_fotos_e_teto_somado_cabe_no_payload_da_lambda():
+    assert mp.MEAL_PHOTO_IMAGES_PER_READING == 3
+    base64_total = -(-mp.MEAL_PHOTO_TOTAL_MAX_BYTES // label_photo.BASE64_BLOCK_BYTES) * label_photo.BASE64_BLOCK_CHARS
+    limite_lambda = 6 * label_photo.BYTES_PER_MIB
+    assert base64_total <= limite_lambda - label_photo.BYTES_PER_MIB  # folga de 1 MiB ou mais para o envelope
+    assert mp.MEAL_PHOTO_MAX_BYTES <= mp.MEAL_PHOTO_TOTAL_MAX_BYTES
+
+
+@pytest.mark.parametrize(
+    ("single", "many", "textos", "erro"),
+    [
+        ("a", None, ["a"], None),  # cliente antigo
+        (None, ["a"], ["a"], None),
+        (None, ["a", "b", "c"], ["a", "b", "c"], None),
+        (None, ["a"] * 4, [], mp.ERR_MEAL_PHOTO_COUNT_INVALID),
+        (None, [], [], mp.ERR_MEAL_PHOTO_COUNT_INVALID),
+        ("a", ["b"], [], mp.ERR_MEAL_PHOTO_COUNT_INVALID),
+        (None, None, [], mp.ERR_MEAL_PHOTO_COUNT_INVALID),
+    ],
+)
+def test_upload_texts(single, many, textos, erro):
+    assert mp.upload_texts(single, many) == (textos, erro)
+
+
+def test_total_size_error_no_teto_somado():
+    assert mp.total_size_error([mp.MEAL_PHOTO_TOTAL_MAX_BYTES]) is None
+    assert mp.total_size_error([mp.MEAL_PHOTO_TOTAL_MAX_BYTES, 1]) == mp.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE
+
+
+def test_espelho_exporta_quantidade_teto_somado_e_rotulos():
+    from app.domain import nutrition
+
+    bloco = nutrition.export_for_frontend()["meal_photo"]
+    assert bloco["images_per_reading"] == mp.MEAL_PHOTO_IMAGES_PER_READING
+    assert bloco["total_max_bytes"] == mp.MEAL_PHOTO_TOTAL_MAX_BYTES
+    assert str(mp.MEAL_PHOTO_IMAGES_PER_READING) in bloco["count_invalid_label"]
+    assert bloco["total_too_large_label"] == lb.LIMITATION_LABELS[mp.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE]
+    assert "rótulo" not in bloco["count_invalid_label"] + bloco["total_too_large_label"]

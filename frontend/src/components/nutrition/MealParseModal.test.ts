@@ -18,7 +18,7 @@ function html(extra: Partial<ComponentProps<typeof PhotoReading>> = {}): string 
     stage: null,
     noItems: [],
     error: null,
-    onPick: vi.fn(),
+    onAnalyze: vi.fn(),
     onClose: vi.fn(),
     ...extra,
   };

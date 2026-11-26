@@ -35,22 +35,22 @@ beforeEach(() => {
 describe('foto do prato: upload e leitura', () => {
   it('upload é JSON com a foto em base64 sem padding, o dia, a refeição e o aluno', async () => {
     apiFetch.mockResolvedValue({ job_id: 'j1', status: 'pending', poll_timeout_seconds: 240 });
-    await uploadMealPhoto(new Blob([JPEG_INICIO]), CONTEXTO);
+    await uploadMealPhoto([new Blob([JPEG_INICIO])], CONTEXTO);
     const [url, opcoes] = apiFetch.mock.calls[0];
     expect(url).toBe('/nutrition/meals/photo');
     expect(opcoes.method).toBe('POST');
-    expect(JSON.parse(opcoes.body)).toEqual({ ...CONTEXTO, image_base64: '/9j/4A' });
+    expect(JSON.parse(opcoes.body)).toEqual({ ...CONTEXTO, images_base64: ['/9j/4A'] });
     expect(opcoes.body).not.toContain('=');
   });
 
   it('descrição e peso total vão no corpo só quando informados', async () => {
     apiFetch.mockResolvedValue({ job_id: 'j1', status: 'pending', poll_timeout_seconds: 240 });
-    await uploadMealPhoto(new Blob([JPEG_INICIO]), { ...CONTEXTO, description: 'arroz e frango', total_grams: 450 });
+    await uploadMealPhoto([new Blob([JPEG_INICIO])], { ...CONTEXTO, description: 'arroz e frango', total_grams: 450 });
     expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({
       ...CONTEXTO,
       description: 'arroz e frango',
       total_grams: 450,
-      image_base64: '/9j/4A',
+      images_base64: ['/9j/4A'],
     });
   });
 
@@ -62,13 +62,13 @@ describe('foto do prato: upload e leitura', () => {
     const etapas: string[] = [];
     const original = new Blob(['cru']);
 
-    const lido = await readMealPhoto(original, CONTEXTO, (etapa) => etapas.push(etapa));
+    const lido = await readMealPhoto([original], CONTEXTO, (etapa) => etapas.push(etapa));
 
     // Devolve a versão reduzida (a enviada), nunca o original; o corpo enviado é o de sempre.
-    expect(lido.photo).toBe(reduzida);
-    expect(lido.photo).not.toBe(original);
+    expect(lido.photos).toEqual([reduzida]);
+    expect(lido.photos[0]).not.toBe(original);
     expect(lido.result).toEqual({ items: [], limitations: [] });
-    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ ...CONTEXTO, image_base64: '/9j/4A' });
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ ...CONTEXTO, images_base64: ['/9j/4A'] });
 
     expect(resizeImageForUpload).toHaveBeenCalledWith(original, {
       maxEdge: MEAL_PHOTO.resize_max_edge_px,
@@ -82,7 +82,25 @@ describe('foto do prato: upload e leitura', () => {
 
   it('se a redução falhar, nada é enviado', async () => {
     resizeImageForUpload.mockRejectedValue(new ImageResizeError('sem canvas'));
-    await expect(readMealPhoto(new Blob(['x']), CONTEXTO)).rejects.toThrow('sem canvas');
+    await expect(readMealPhoto([new Blob(['x'])], CONTEXTO)).rejects.toThrow('sem canvas');
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it('3 fotos: cada uma é reduzida e vão todas em images_base64, numa leitura só', async () => {
+    resizeImageForUpload.mockImplementation(async () => new Blob([JPEG_INICIO]));
+    apiFetch.mockResolvedValue({ job_id: 'j1', status: 'pending', poll_timeout_seconds: 240 });
+    pollAsyncJob.mockResolvedValue({ items: [], limitations: [] });
+    const lido = await readMealPhoto([new Blob(['1']), new Blob(['2']), new Blob(['3'])], CONTEXTO);
+    expect(resizeImageForUpload).toHaveBeenCalledTimes(MEAL_PHOTO.images_per_reading);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body).images_base64).toEqual(['/9j/4A', '/9j/4A', '/9j/4A']);
+    expect(lido.photos).toHaveLength(3);
+  });
+
+  it('soma das reduzidas acima do teto: não envia e mostra o rótulo do espelho', async () => {
+    const grande = new Blob([new Uint8Array(MEAL_PHOTO.total_max_bytes / 2 + 1)]);
+    resizeImageForUpload.mockResolvedValue(grande);
+    await expect(readMealPhoto([new Blob(['1']), new Blob(['2'])], CONTEXTO)).rejects.toThrow(MEAL_PHOTO.total_too_large_label);
     expect(apiFetch).not.toHaveBeenCalled();
   });
 

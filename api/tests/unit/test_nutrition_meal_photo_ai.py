@@ -482,3 +482,111 @@ def test_soma_divergente_do_total_chega_ao_resultado(monkeypatch, uso):
     evento = _evento()
     evento["payload"] = {**evento["payload"], "total_grams": 1000}
     assert meal_photo.LIMIT_TOTAL_GRAMS_MISMATCH in json.dumps(ai.run_meal_photo_job(evento))
+
+
+# ---------------------------------------------------------------------------
+# Várias fotos da mesma refeição (#325)
+# ---------------------------------------------------------------------------
+
+CHAVES = [meal_photo.meal_photo_key(USUARIO, f"{n:032x}") for n in range(3)]
+
+
+def _evento_varias(chaves, **extra):
+    evento = _evento(s3_keys=chaves, **extra)
+    del evento["s3_key"]
+    return evento
+
+
+def test_job_com_tres_fotos_le_todas_e_manda_uma_imagem_por_foto_numa_chamada(monkeypatch, uso):
+    lidas = _foto(monkeypatch)
+    chamadas = _ia(monkeypatch, LEITURA)
+    _catalogo(monkeypatch)
+    resultado = ai.run_meal_photo_job(_evento_varias(CHAVES))
+    assert lidas == CHAVES
+    [chamada] = chamadas
+    assert [imagem.data for imagem in chamada["images"]] == [JPEG] * 3
+    assert {imagem.content_type for imagem in chamada["images"]} == {meal_photo.MEAL_PHOTO_CONTENT_TYPE}
+    assert resultado["photos_read"] == 3 and resultado["prompt_version"] == "nutrition-photo-v3"
+    assert [f["status"] for f in uso.fechamentos] == [AiUsageStatus.SUCCEEDED]
+
+
+def test_job_antigo_com_s3_key_continua_lendo_uma_foto(monkeypatch, uso):
+    lidas = _foto(monkeypatch)
+    chamadas = _ia(monkeypatch, LEITURA)
+    _catalogo(monkeypatch)
+    resultado = ai.run_meal_photo_job(_evento())
+    assert lidas == [CHAVE] and len(chamadas[0]["images"]) == 1 and resultado["photos_read"] == 1
+
+
+@pytest.mark.parametrize(
+    "chaves",
+    [
+        [CHAVE, meal_photo.meal_photo_key(USUARIO + 1, "f" * 32)],  # uma de outro usuário
+        [],
+        [CHAVE] * (meal_photo.MEAL_PHOTO_IMAGES_PER_READING + 1),
+        CHAVE,  # string no lugar da lista
+    ],
+    ids=["outro_usuario", "vazia", "acima_do_dono", "nao_lista"],
+)
+def test_job_recusa_chaves_invalidas_antes_de_ler_qualquer_foto(monkeypatch, uso, chaves):
+    lidas = _foto(monkeypatch)
+    chamadas = _ia(monkeypatch, LEITURA)
+    with pytest.raises(ai.MealPhotoJobError) as exc:
+        ai.run_meal_photo_job(_evento_varias(chaves))
+    assert exc.value.code == meal_photo.ERR_MEAL_PHOTO_KEY_INVALID
+    assert lidas == [] and chamadas == []
+    assert uso.fechamentos[0]["error_code"] == meal_photo.ERR_MEAL_PHOTO_KEY_INVALID
+
+
+def test_job_recusa_soma_acima_do_teto_sem_chamar_a_ia(monkeypatch, uso):
+    grande = JPEG + b"j" * (meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES // 3)
+    _foto(monkeypatch, dados=grande)
+    chamadas = _ia(monkeypatch, LEITURA)
+    with pytest.raises(ai.MealPhotoJobError) as exc:
+        ai.run_meal_photo_job(_evento_varias(CHAVES))
+    assert exc.value.code == meal_photo.ERR_MEAL_PHOTO_TOTAL_TOO_LARGE and chamadas == []
+
+
+def test_claude_recebe_um_bloco_de_imagem_por_foto(monkeypatch):
+    _ligar_claude(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chave-de-teste")
+    pedidos = []
+
+    class _Mensagens:
+        def create(self, **kwargs):
+            pedidos.append(kwargs)
+            return {"model": kwargs["model"], "stop_reason": "end_turn",
+                    "content": [{"type": "text", "text": json.dumps(LEITURA)}],
+                    "usage": {"input_tokens": 700, "output_tokens": 90}}
+
+    class _Cliente:
+        messages = _Mensagens()
+
+    monkeypatch.setattr(llm_anthropic, "_client", lambda _chave: _Cliente())
+    fotos = [JPEG, JPEG + b"2", JPEG + b"3"]
+    leitura = ai.read_meal_photo(fotos, user_id=USUARIO)
+    [pedido] = pedidos
+    imagens = [bloco for bloco in pedido["messages"][0]["content"] if bloco["type"] == "image"]
+    assert [base64.b64decode(bloco["source"]["data"]) for bloco in imagens] == fotos
+    assert leitura.photos_read == 3
+
+
+def test_fallback_openai_recebe_uma_imagem_por_foto(monkeypatch):
+    _ligar_claude(monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-de-teste")
+    enviados = []
+
+    def _fake(request, timeout=None):
+        enviados.append(json.loads(request.data.decode("utf-8")))
+        return _RespostaOpenAI()
+
+    monkeypatch.setattr(openai_client.urllib.request, "urlopen", _fake)
+    ai.read_meal_photo([JPEG, JPEG], user_id=USUARIO)
+    [corpo] = enviados
+    imagens = [bloco for bloco in corpo["input"][0]["content"] if bloco["type"] == "input_image"]
+    assert len(imagens) == 2 and {bloco["detail"] for bloco in imagens} == {meal_photo.MEAL_IMAGE_DETAIL}
+
+
+def test_prompt_values_traz_fotos_max_do_dono():
+    assert ai.prompt_values()["fotos_max"] == str(meal_photo.MEAL_PHOTO_IMAGES_PER_READING)
