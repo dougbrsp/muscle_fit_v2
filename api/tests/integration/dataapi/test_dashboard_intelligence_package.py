@@ -20,10 +20,12 @@ pacote e um recorte daquela leitura, e dois seeds divergiriam em silencio.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from app import analytics_dashboard
+from app.intelligence.dashboard import time_windows
 from app.intelligence.dashboard.contracts import IntelligencePackageResponse
 from app.intelligence.dashboard.intelligence_package import (
     PACKAGE_MAX_BYTES,
@@ -55,6 +57,19 @@ def _pacote(quem: int, **params):
 
 
 def test_payload_identico_nos_dois_backends(seed, monkeypatch, fake_rds, mysql_schema):  # noqa: F811 - fixture do pytest importada (falso positivo)
+    # Congela o "agora" das janelas: `time_windows.user_now` e o unico leitor de
+    # relogio do caminho do pacote (os demais servicos o importam e chamam sem
+    # `now_utc`), entao trocar o `datetime` desse modulo cobre todos. Instante
+    # real capturado uma vez, para continuar coerente com o seed (relativo a hoje).
+    instante = datetime.now(timezone.utc)
+
+    class _DatetimeFixo(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instante.astimezone(tz) if tz else instante.replace(tzinfo=None)
+
+    monkeypatch.setattr(time_windows, "datetime", _DatetimeFixo)
+
     resultados = {}
     for backend in BACKENDS:
         use_backend(backend, monkeypatch, fake_rds, mysql_schema)
