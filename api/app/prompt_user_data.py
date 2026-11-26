@@ -6,8 +6,9 @@ digitado pelo usuario entra no prompt como DADO, entre `<dados_do_usuario>` e
 `</dados_do_usuario>`, com a regra explicita de que ali dentro nao ha ordens.
 
 O saneamento:
-- normaliza em NFKC e remove formato invisivel/separador Unicode (Cf, Zl, Zp)
-  e caractere de controle (\n e \t ficam);
+- normaliza em NFKC, remove formato invisivel Unicode (Cf), troca por espaco o
+  separador de linha/paragrafo (Zl, Zp) e o caractere de controle (\n, \t e \r
+  ficam);
 - neutraliza qualquer ocorrencia do proprio delimitador (sem isso, um texto
   contendo `</dados_do_usuario>` fecharia o bloco e o resto viraria instrucao
   aos olhos do modelo);
@@ -43,10 +44,11 @@ USER_DATA_OPEN = "<dados_do_usuario>"
 USER_DATA_CLOSE = "</dados_do_usuario>"
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_DELIMITER_RE = re.compile(r"<\s*/?\s*dados_do_usuario\b[^>\n]*>?", re.IGNORECASE)
-# Formato invisivel (zero-width, bidi) e separador de linha/paragrafo Unicode:
-# esconderiam o delimitador do regex ou quebrariam a linha sem `\n`.
-_INVISIBLE_CATEGORIES = frozenset({"Cf", "Zl", "Zp"})
+_DELIMITER_RE = re.compile(r"<\s*(?:/\s*)?dados_do_usuario\b[^>\n]*>?", re.IGNORECASE)
+# Formato invisivel (zero-width, bidi) esconderia o delimitador do regex. Zl/Zp
+# (U+2028/2029) quebrariam a linha sem `\n`: viram espaco, sem colar as palavras.
+_INVISIBLE_CATEGORIES = frozenset({"Cf"})
+_LINE_SEPARATOR_CATEGORIES = frozenset({"Zl", "Zp"})
 
 
 def sanitize_user_text(raw: Optional[str], max_chars: int) -> str:
@@ -55,7 +57,11 @@ def sanitize_user_text(raw: Optional[str], max_chars: int) -> str:
         return ""
     # NFKC dobra variantes (fullwidth `＜` -> `<`) antes do regex do delimitador.
     text = unicodedata.normalize("NFKC", str(raw))
-    text = "".join(c for c in text if unicodedata.category(c) not in _INVISIBLE_CATEGORIES)
+    text = "".join(
+        " " if cat in _LINE_SEPARATOR_CATEGORIES else c
+        for c in text
+        if (cat := unicodedata.category(c)) not in _INVISIBLE_CATEGORIES
+    )
     text = _CONTROL_CHARS_RE.sub(" ", text)
     text = _DELIMITER_RE.sub("[delimitador removido]", text)
     text = text.strip()

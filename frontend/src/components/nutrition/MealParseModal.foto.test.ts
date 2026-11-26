@@ -224,7 +224,9 @@ describe('foto do prato: até MEAL_PHOTO.images_per_reading fotos numa leitura',
       expect(miniaturas()).toHaveLength(n);
       await analisar();
       expect(readMealPhoto).toHaveBeenCalledTimes(1);
-      expect(readMealPhoto.mock.calls[0][0]).toEqual(files);
+      const enviadas = readMealPhoto.mock.calls[0][0] as File[];
+      expect(enviadas).toHaveLength(files.length);
+      files.forEach((f, i) => expect(enviadas[i]).toBe(f));
       await act(async () => root?.unmount());
       root = null;
       host.remove();
@@ -252,7 +254,9 @@ describe('foto do prato: até MEAL_PHOTO.images_per_reading fotos numa leitura',
     expect(botaoPorTexto('Adicionar outra foto').disabled).toBe(false);
     readMealPhoto.mockResolvedValue({ result: RESULTADO, photos: [new Blob(['x'])] });
     await analisar();
-    expect(readMealPhoto.mock.calls[0][0]).toEqual(files.slice(1));
+    const enviadas = readMealPhoto.mock.calls[0][0] as File[];
+    expect(enviadas).toHaveLength(files.length - 1);
+    files.slice(1).forEach((f, i) => expect(enviadas[i]).toBe(f));
   });
 
   it('soma acima do teto: o rótulo do espelho aparece e nada é aceito como sucesso', async () => {

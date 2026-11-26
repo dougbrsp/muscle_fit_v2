@@ -1652,7 +1652,7 @@ PADROES: tuple[Padrao, ...] = (
         regex=re.compile(
             # #330: as dicas da pessoa e o item editado (#323) também são do dono.
             r"\b(?:MEAL_PHOTO_(?:MAX_BYTES|CONTENT_TYPE|S3_PREFIX|RETENTION_DAYS|IMAGES_PER_READING|DESCRIPTION_MAX_CHARS"
-            r"|TOTAL_GRAMS_(?:MIN|MAX|TOLERANCE)|EDITED_ITEM_\w+)|MEAL_IMAGE_DETAIL|PHOTO_UNCERTAINTY_NONE)"
+            r"|TOTAL_GRAMS_(?:MIN|MAX|TOLERANCE)|TOTAL_MAX_(?:BYTES|MIB)|EDITED_ITEM_\w+)|MEAL_IMAGE_DETAIL|PHOTO_UNCERTAINTY_NONE)"
             r"""\s*(?::[^=\n]+)?=\s*(?:[\d(\[{"'`]|(?:int|float|Number)\(|frozenset|new Set|label_photo\."""
             r"""|ItemEvidence\.|(?:True|False|true|false)\b)"""
             r"""|["'`]nutrition-meals(?=[/"'`])"""
@@ -3896,10 +3896,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "MEAL_PHOTO_TOTAL_GRAMS_MAX = 5000", "MEAL_PHOTO_TOTAL_GRAMS_TOLERANCE: float = 0.10",
          "MEAL_PHOTO_EDITED_ITEM_EVIDENCE = ItemEvidence.USER_INFORMED",
          'MEAL_PHOTO_EDITED_ITEM_EVIDENCE = "user_informed"', "MEAL_PHOTO_EDITED_ITEM_KEEPS_RANGE: Final[bool] = False",
+         "MEAL_PHOTO_TOTAL_MAX_MIB = 3", "MEAL_PHOTO_TOTAL_MAX_BYTES: Final[int] = 3 * 1024 * 1024",
          "const MEAL_PHOTO_EDITED_ITEM_KEEPS_RANGE = false;", 'const PHOTO_UNCERTAINTY_NONE = "none";'),
         ("chave = meal_photo.meal_photo_key(usuario, uuid.uuid4().hex)", "if dados > meal_photo.MEAL_PHOTO_MAX_BYTES:",
          "if len(texto) > meal_photo.MEAL_PHOTO_DESCRIPTION_MAX_CHARS:",
          "const MEAL_PHOTO_TOTAL_GRAMS_MAX = MEAL_PHOTO.total_grams_max;",
+         "if soma > meal_photo.MEAL_PHOTO_TOTAL_MAX_BYTES:",
          "keepsRange: MEAL_PHOTO.edited_item_keeps_range,",
          "maxEdge: MEAL_PHOTO.resize_max_edge_px,", 'id = "nutrition-meals-expire-1d"', "/nutrition/meals/photo",
          "ContentType=meal_photo.MEAL_PHOTO_CONTENT_TYPE"),

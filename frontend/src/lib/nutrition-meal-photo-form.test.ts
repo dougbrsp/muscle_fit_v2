@@ -148,6 +148,9 @@ describe('foto do prato: formulário', () => {
     // Unidade com porção não se aplica ao alimento novo: volta ao padrão do alimento.
     const comPorcao = chooseCatalogFood({ ...estimado, unit: PORTION_UNITS[0], portion_id: 5 }, AVEIA);
     expect(comPorcao).toMatchObject({ quantity: 30, unit: 'g', portion_id: null });
+    // Base diferente (g × ml): usa a unidade e a quantidade padrão do alimento novo.
+    const LEITE = { id: 78, name: 'Leite', basis: 'ml', default_portion: { quantity: 200, unit: 'ml' }, brand: null } as const;
+    expect(chooseCatalogFood(estimado, LEITE)).toMatchObject({ quantity: 200, unit: 'ml' });
   });
 
   it('trocar a origem atualiza o selo e o destaque, nos dois sentidos', () => {

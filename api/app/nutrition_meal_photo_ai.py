@@ -344,6 +344,7 @@ def run_meal_photo_job(event: Mapping[str, Any]) -> dict[str, Any]:
         if (
             not isinstance(keys, list)
             or not 1 <= len(keys) <= meal_photo.MEAL_PHOTO_IMAGES_PER_READING
+            or len(set(map(str, keys))) != len(keys)  # a mesma foto repetida não conta como várias
             or not all(meal_photo.is_meal_photo_key_of(key, user_id) for key in keys)
         ):
             raise MealPhotoJobError(meal_photo.ERR_MEAL_PHOTO_KEY_INVALID)

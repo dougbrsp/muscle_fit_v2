@@ -154,7 +154,7 @@ function SourceSelect({ item, onChange }: { item: MealEditorItem; onChange: (ite
         error={valor === null ? 'Escolha o alimento' : undefined}
       />
       {buscando && (
-        <Paper withBorder radius="sm" p="xs" data-testid="item-busca-catalogo" aria-label={`Buscar outro alimento para ${item.label}`}>
+        <Paper withBorder radius="sm" p="xs" data-testid="item-busca-catalogo" role="group" aria-label={`Buscar alimento para substituir ${item.label}`}>
           <Stack gap="xs">
             <FoodSearch
               isAdmin={false}
@@ -268,7 +268,7 @@ function ItemRow({
           allowDeselect={false}
           style={{ flex: '1 1 0', minWidth: 0 }}
         />
-        <ActionIcon variant="subtle" color="red" size="lg" aria-label={`Remover ${item.label}`} onClick={onRemove} mb={2}>
+        <ActionIcon variant="subtle" color="red" size="lg" aria-label={`Remover ${item.label}`} onClick={onRemove} mb={2} style={{ minWidth: 44, minHeight: 44 }}>
           <IconTrash size={16} />
         </ActionIcon>
       </Group>

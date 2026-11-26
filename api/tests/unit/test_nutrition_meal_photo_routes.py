@@ -93,7 +93,9 @@ class _Despacho:
         self.eventos.append(("put", user_id, len(data)))
         if self.falha_s3:
             raise storage.MealPhotoStorageError("s3 fora")
-        return CHAVE
+        # 1ª foto = CHAVE; as seguintes têm chave distinta (o S3 real gera uma por foto).
+        n = sum(e[0] == "put" for e in self.eventos) - 1
+        return CHAVE if n == 0 else meal_photo.meal_photo_key(user_id, f"{n:032x}")
 
     def create_job(self, job_type, request=None, *, owner_user_id):
         self.eventos.append(("create_job", job_type, request, owner_user_id))
@@ -412,7 +414,7 @@ def test_ate_tres_fotos_uma_leitura_uma_cota_uma_chave_por_foto(monkeypatch, qua
     assert despacho.eventos[0][1]["image_count"] == quantas
     [(_, _, gravado, _)] = [e for e in despacho.eventos if e[0] == "create_job"]
     [(_, _, evento)] = [e for e in despacho.eventos if e[0] == "invoke"]
-    assert gravado["s3_keys"] == [CHAVE] * quantas and evento["s3_keys"] == [CHAVE] * quantas
+    assert evento["s3_keys"] == gravado["s3_keys"] and len(set(gravado["s3_keys"])) == quantas
     assert evento["s3_key"] == evento["s3_keys"][0]
     assert "s3_key" not in gravado and "images_base64" not in gravado
 

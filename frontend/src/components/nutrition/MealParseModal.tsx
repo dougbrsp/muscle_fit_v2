@@ -3,7 +3,7 @@
 import { ActionIcon, Alert, Button, FileButton, Group, Loader, Modal, NumberInput, Select, Stack, Text, Textarea } from '@mantine/core';
 import { IconAlertTriangle, IconCamera, IconPhoto, IconSparkles, IconX } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { MEAL_PARSE_QUOTA_EXCEEDED_LABEL, MEAL_PARSE_TEXT_MAX_CHARS, MEAL_PHOTO, MEAL_SLOT_OPTIONS } from '@/lib/nutrition-constants';
 import {
@@ -272,12 +272,8 @@ type PhotoReadingProps = {
  */
 export function PhotoReading({ slot, onSlotChange, description = '', onDescriptionChange, totalGrams = '', onTotalGramsChange, quota, busy, stage, noItems, error, onAnalyze, onClose }: PhotoReadingProps) {
   const [fotos, setFotos] = useState<File[]>([]);
-  const [urls, setUrls] = useState<string[]>([]);
-  useEffect(() => {
-    const novas = fotos.map((f) => URL.createObjectURL(f));
-    setUrls(novas);
-    return () => novas.forEach((u) => URL.revokeObjectURL(u));
-  }, [fotos]);
+  const urls = useMemo(() => fotos.map((f) => URL.createObjectURL(f)), [fotos]);
+  useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls]);
   const cheio = fotos.length >= MEAL_PHOTO.images_per_reading;
   const resetCamera = useRef<() => void>(null);
   const resetGaleria = useRef<() => void>(null);
