@@ -104,6 +104,7 @@ function ProgressaoContent() {
 type GrupoItem = NonNullable<Awaited<ReturnType<typeof fetchProgressionByMuscleGroup>>['items']>[number];
 
 function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilters>['windowQuery'] }) {
+  const { filters } = useDashboardFilters();
   const query = useQuery({
     queryKey: dashboardKeys.progressionByMuscleGroup(window),
     queryFn: () => fetchProgressionByMuscleGroup(window),
@@ -171,7 +172,7 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
             )}
           />
           <BottomSheet opened={open !== null} onClose={() => setOpen(null)} title={open?.muscle_group_name ?? 'Grupo'}>
-            {open ? <GrupoDetalhe item={open} degraded={data.degraded === true} minSessions={data.min_sessions_per_window} scopes={data} /> : null}
+            {open ? <GrupoDetalhe filters={filters} item={open} degraded={data.degraded === true} minSessions={data.min_sessions_per_window} scopes={data} /> : null}
           </BottomSheet>
           <BottomSheet opened={help} onClose={closeHelp} title="Como ler">
             <ListGroup>
@@ -220,7 +221,9 @@ function GrupoDetalhe({
   degraded,
   minSessions,
   scopes,
+  filters,
 }: {
+  filters: ReturnType<typeof useDashboardFilters>['filters'];
   item: GrupoItem;
   degraded: boolean;
   minSessions: number;
@@ -270,7 +273,16 @@ function GrupoDetalhe({
           {item.performance_exercises.filter((ex) => ex.status).map((ex) => (
             <ListBlock key={ex.exercise_id}>
               <p className={styles.body} style={{ marginTop: 0 }}>
-                {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
+                {Number.isInteger(ex.exercise_id) && ex.exercise_id > 0 ? (
+                  <Link
+                    href={exerciseProgressHref(ex.exercise_id, filters)}
+                    style={{ color: MOBILE_TOKENS.accent, textDecoration: 'underline' }}
+                  >
+                    {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
+                  </Link>
+                ) : (
+                  (ex.exercise_name ?? `Exercício ${ex.exercise_id}`)
+                )}
               </p>
               <div className={styles.badges}>
                 <StatusBadge domain="exerciseProgression" code={ex.status} size="xs" />

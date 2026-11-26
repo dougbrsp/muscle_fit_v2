@@ -18,8 +18,8 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconPhoto, IconSparkles, IconTrash } from '@tabler/icons-react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { FavoriteShortcuts } from './FavoriteShortcuts';
 import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { FoodSearch } from './FoodSearch';
@@ -135,15 +135,48 @@ function SourceSelect({ item, onChange }: { item: MealEditorItem; onChange: (ite
   );
 }
 
+type Pendentes = MutableRefObject<Map<string, number | string>>;
+
+// Mesma regra de `quantidade` em nutrition-meal-form: vazio ou não numérico não vale.
+const quantidadeValida = (v: number | string) => v !== '' && Number.isFinite(Number(v));
+
 function ItemRow({
   item,
+  pendentes,
+  sincronizar,
   onChange,
   onRemove,
+  tentativasInvalidas,
 }: {
   item: MealEditorItem;
+  pendentes: Pendentes;
+  /** Avisa o pai de que o mapa de pendentes mudou (booleano: só re-renderiza quando vira/desvira). */
+  sincronizar: () => void;
   onChange: (item: MealEditorItem) => void;
   onRemove: () => void;
+  /** Conta os Salvar barrados por quantidade inválida; a cada aumento, o campo inválido mostra o erro. */
+  tentativasInvalidas: number;
 }) {
+  // Texto em edição da quantidade: só vai ao `form` (e ao preview) no blur/Enter; o ref deixa o Salvar ler o valor ainda em foco.
+  const [rascunho, setRascunho] = useState<number | string | null>(null);
+  const [erroQuantidade, setErroQuantidade] = useState(false);
+  useEffect(() => {
+    const valor = pendentes.current.get(item.key);
+    if (tentativasInvalidas > 0 && valor !== undefined && !quantidadeValida(valor)) setErroQuantidade(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tentativasInvalidas]);
+  function confirmarQuantidade() {
+    const valor = pendentes.current.get(item.key);
+    if (valor === undefined) return;
+    if (!quantidadeValida(valor)) {
+      setErroQuantidade(true);
+      return;
+    }
+    pendentes.current.delete(item.key);
+    sincronizar();
+    setRascunho(null);
+    onChange({ ...item, quantity: valor });
+  }
   if (item.quick) return <QuickEntryItemRow item={item} draft={item.quick} onChange={onChange} onRemove={onRemove} />;
   const daLeitura = item.choices.length > 0 || (item.id === null && item.estimate !== null);
   // Item estimado não tem porção: só g, ml e medidas caseiras (a API confere de novo).
@@ -152,7 +185,17 @@ function ItemRow({
     <Stack gap={2}>
       <Group gap="xs" align="flex-end" wrap="wrap">
         {daLeitura ? (
-          <SourceSelect item={item} onChange={onChange} />
+          <SourceSelect
+            item={item}
+            onChange={(novo) => {
+              // A troca redefine a quantidade: o texto em edição (inclusive inválido) perde a vez.
+              pendentes.current.delete(item.key);
+              sincronizar();
+              setRascunho(null);
+              setErroQuantidade(false);
+              onChange(novo);
+            }}
+          />
         ) : (
           <Text size="sm" fw={600} c={BRAND.textPrimary} style={{ flex: '1 1 200px' }}>
             {item.label}
@@ -176,8 +219,19 @@ function ItemRow({
         )}
         <NumberInput
           label="Quantidade"
-          value={item.quantity}
-          onChange={(valor) => onChange({ ...item, quantity: valor })}
+          value={rascunho ?? item.quantity}
+          onChange={(valor) => {
+            pendentes.current.set(item.key, valor);
+            sincronizar();
+            setRascunho(valor);
+            setErroQuantidade(false);
+          }}
+          onBlur={confirmarQuantidade}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') confirmarQuantidade();
+          }}
+          enterKeyHint="done"
+          error={erroQuantidade ? 'Informe a quantidade' : undefined}
           min={0}
           decimalScale={3}
           w={120}
@@ -222,6 +276,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
       : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: '', notes: '', items: [], ai: null }),
   );
   const proximaChave = useRef(0);
+  const pendentes: Pendentes = useRef(new Map());
   // Refeição nova (sem edição nem leitura por IA) abre com a ÚLTIMA hora registrada pela pessoa, quando a API
   // responde. A hora digitada (mesmo apagada) nunca é sobrescrita; trocar o Dia não mexe na hora.
   const horaTocada = useRef(false);
@@ -254,7 +309,17 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     return () => URL.revokeObjectURL(url);
   }, [foto]);
 
-  const corpo = mealCreatePayload(form);
+  /** Payload de gravação sobre o form com as quantidades ainda em foco (blur/clique fora de ordem) já aplicadas. */
+  function montarCorpo() {
+    const efetivo: MealEditorForm = {
+      ...form,
+      items: form.items.map((i) => {
+        const v = pendentes.current.get(i.key);
+        return v !== undefined && quantidadeValida(v) ? { ...i, quantity: v } : i;
+      }),
+    };
+    return meal ? mealPayload(efetivo) : mealCreatePayload(efetivo);
+  }
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
   const [previewDebounced] = useDebouncedValue(corpoPreview ? JSON.stringify(corpoPreview) : null, ATRASO_DO_PREVIEW_MS);
   const preview = useQuery({
@@ -262,6 +327,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     queryFn: () => previewMeal(JSON.parse(previewDebounced as string) as MealPreviewPayload),
     enabled: previewDebounced !== null,
     retry: false,
+    placeholderData: keepPreviousData, // o bloco "Calculado pelo motor" não some durante o recálculo
   });
 
   const ultimaHora = useQuery({
@@ -280,19 +346,36 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
 
   const salvar = useMutation({
     mutationFn: () => {
-      if (meal) {
-        const corpoEdicao = mealPayload(form);
-        if (!corpoEdicao) throw new Error('Refeição incompleta.');
-        return updateMeal(meal.id, corpoEdicao);
-      }
-      if (!corpo) throw new Error('Refeição incompleta.');
-      return createMeal(corpo);
+      const corpoSalvar = montarCorpo();
+      if (!corpoSalvar) throw new Error('Refeição incompleta.');
+      return meal ? updateMeal(meal.id, corpoSalvar) : createMeal(corpoSalvar);
     },
     onSuccess: (salva) => {
       void queryClient.invalidateQueries({ queryKey: lastMealTimeKey });
       onSaved(salva);
     },
   });
+
+  // Quantidade inválida ainda em foco: o erro aparece no campo e nada é gravado.
+  const [tentativasInvalidas, setTentativasInvalidas] = useState(0);
+  const [temPendente, setTemPendente] = useState(false);
+  const [mostrarPendencias, setMostrarPendencias] = useState(false);
+  // Só dados exatos (form): com pendente o botão fica habilitado e o tentarSalvar decide.
+  const corpoForm = meal ? mealPayload(form) : mealCreatePayload(form);
+  const sincronizar = () => setTemPendente(pendentes.current.size > 0);
+  function tentarSalvar() {
+    const chaves = new Set(form.items.map((i) => i.key));
+    if (Array.from(pendentes.current).some(([k, v]) => chaves.has(k) && !quantidadeValida(v))) {
+      setTentativasInvalidas((n) => n + 1);
+      return;
+    }
+    // Incompleta por outro motivo: os avisos da tela já dizem o que falta.
+    if (montarCorpo() === null) {
+      setMostrarPendencias(true);
+      return;
+    }
+    salvar.mutate();
+  }
 
   function adicionarCadastrado(alimento: { id: number; name: string; basis: string; warnings?: NutritionLimitation[] }) {
     setAvisosCadastro(alimento.warnings ?? []);
@@ -321,7 +404,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const erroPreview = preview.isError ? nutritionErrorInfo(preview.error, 'Não foi possível calcular a refeição.') : null;
   const erroSalvar = salvar.isError ? nutritionErrorInfo(salvar.error, 'Não foi possível salvar a refeição.') : null;
   const semOrigem = form.items.some((item) => !itemHasSource(item));
-  const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
+  const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem && (!temPendente || mostrarPendencias);
 
   function fecharCadastro() {
     // Fechou (X, Esc, voltar) na etapa final: o alimento já foi salvo, então entra na refeição como em "Concluir",
@@ -533,8 +616,15 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             <ItemRow
               key={item.key}
               item={item}
+              pendentes={pendentes}
+              sincronizar={sincronizar}
+              tentativasInvalidas={tentativasInvalidas}
               onChange={(novo) => atualizarItem(item.key, novo)}
-              onRemove={() => setForm((atual) => ({ ...atual, items: atual.items.filter((i) => i.key !== item.key) }))}
+              onRemove={() => {
+                pendentes.current.delete(item.key);
+                sincronizar();
+                setForm((atual) => ({ ...atual, items: atual.items.filter((i) => i.key !== item.key) }));
+              }}
             />
           ))}
         </Stack>
@@ -556,7 +646,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             Escolha o alimento de cada item marcado (ou a estimativa da IA, quando houver).
           </Text>
         )}
-        {form.meal_slot === null && corpoPreview !== null && (
+        {form.meal_slot === null && (corpoPreview !== null || mostrarPendencias) && (
           <Text size="sm" c="yellow">
             Escolha a refeição para salvar. O cálculo abaixo não depende dela.
           </Text>
@@ -599,7 +689,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           </Alert>
         )}
         <Group>
-          <Button color="brand" onClick={() => salvar.mutate()} loading={salvar.isPending} disabled={corpo === null}>
+          <Button color="brand" onClick={tentarSalvar} loading={salvar.isPending} disabled={!temPendente && corpoForm === null}>
             Salvar refeição
           </Button>
           <Button variant="subtle" color="gray" onClick={onCancel}>
