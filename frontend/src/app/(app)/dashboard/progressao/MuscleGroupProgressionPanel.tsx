@@ -1,13 +1,15 @@
 'use client';
 
-import { Group, Paper, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { Anchor, Group, Paper, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { ExerciseProgressionSummaryCard } from './ExerciseProgressionSummaryCard';
 import { ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import { DashboardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
 import { dashboardKeys, fetchProgressionByMuscleGroup } from '@/lib/dashboard-api';
-import type { DashboardWindowQuery } from '@/lib/dashboard-filters';
+import { useDashboardFilters, type DashboardFilters, type DashboardWindowQuery } from '@/lib/dashboard-filters';
 import { fmtDate, fmtInt, fmtKgTotal, fmtSignedPercent } from '@/lib/dashboard-format';
+import { exerciseProgressHref } from '@/lib/exercise-progress';
 import { performanceTooltip } from '@/lib/dashboard-muscle-performance';
 import type { MuscleGroupProgressionItem, MuscleGroupProgressionResponse } from '@/lib/dashboard-v2-types';
 import { groupCompositionText } from '@/lib/progression-scope';
@@ -44,6 +46,7 @@ import { BRAND } from '@/theme';
  * arquivo não tem mais tabela de rótulo/cor própria.
  */
 export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindowQuery }) {
+  const { filters } = useDashboardFilters();
   const query = useQuery({
     queryKey: dashboardKeys.progressionByMuscleGroup(window),
     queryFn: () => fetchProgressionByMuscleGroup(window),
@@ -135,7 +138,7 @@ export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindo
                       <VolumeCell item={item} />
                     </Table.Td>
                     <Table.Td>
-                      <PerformanceCell item={item} degraded={data?.degraded === true} scopes={data} />
+                      <PerformanceCell item={item} degraded={data?.degraded === true} scopes={data} filters={filters} />
                     </Table.Td>
                     <Table.Td>
                       <Text size="xs" c={BRAND.textMuted}>
@@ -203,7 +206,9 @@ function PerformanceCell({
   item,
   degraded,
   scopes,
+  filters,
 }: {
+  filters: DashboardFilters;
   item: MuscleGroupProgressionItem;
   degraded: boolean;
   scopes: MuscleGroupProgressionResponse | undefined;
@@ -243,9 +248,15 @@ function PerformanceCell({
           <ScopeCaption scope={scopes?.exercise_status_scope} />
           {exercicios.map((ex) => (
             <Group key={ex.exercise_id} gap={6} wrap="nowrap" align="center">
-              <Text size="xs" c={BRAND.textMuted}>
-                {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
-              </Text>
+              {Number.isInteger(ex.exercise_id) && ex.exercise_id > 0 ? (
+                <Anchor component={Link} size="xs" href={exerciseProgressHref(ex.exercise_id, filters)}>
+                  {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
+                </Anchor>
+              ) : (
+                <Text size="xs" c={BRAND.textMuted}>
+                  {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
+                </Text>
+              )}
               <StatusBadge domain="exerciseProgression" code={ex.status} size="xs" />
             </Group>
           ))}
