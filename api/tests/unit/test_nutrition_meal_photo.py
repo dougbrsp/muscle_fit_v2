@@ -236,3 +236,92 @@ def test_texto_do_prazo_acompanha_o_dono():
     assert lb.days_label(1) == "1 dia" and lb.days_label(30) == "30 dias"
     assert lb.days_label(mp.MEAL_PHOTO_RETENTION_DAYS) in lb.limitation_label(mp.ERR_MEAL_PHOTO_NOT_FOUND)
 
+
+# ---------------------------------------------------------------------------
+# Dicas da pessoa e detalhes da foto (#323)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("descricao", "total", "codigo"),
+    [
+        (None, None, None),
+        ("   ", None, None),
+        ("x" * mp.MEAL_PHOTO_DESCRIPTION_MAX_CHARS, mp.MEAL_PHOTO_TOTAL_GRAMS_MAX, None),
+        ("x" * (mp.MEAL_PHOTO_DESCRIPTION_MAX_CHARS + 1), None, mp.ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG),
+        (None, 0, mp.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+        (None, -1, mp.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+        (None, mp.MEAL_PHOTO_TOTAL_GRAMS_MAX + 1, mp.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+        (None, True, mp.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+        (None, 100.5, mp.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID),
+    ],
+)
+def test_user_hints_error(descricao, total, codigo):
+    assert mp.user_hints_error(descricao, total) == codigo
+
+
+def test_descricao_normalizada_e_codigo_sem_o_texto():
+    assert mp.normalize_description("  arroz  ") == "arroz" and mp.normalize_description("  ") is None
+    assert mp.normalize_description(None) is None
+    assert "segredo" not in mp.user_hints_error("segredo" * 200, None)
+
+
+def _leitura(*itens, **extra):
+    return {"plate_status": PlateStatus.RECOGNIZED.value, "items": list(itens), **extra}
+
+
+def test_faixa_incoerente_e_descartada_sem_falhar_e_a_coerente_fica():
+    bom = _item(evidence="observed", grams_low=100, grams_high=140, uncertainty="hidden_portion")
+    ruim = _item(name="feijao", grams_low=130, grams_high=200)  # central 120 fora da faixa
+    invertida = _item(name="salada", grams_low=150, grams_high=100)
+    revisao = mp.review_reading(_leitura(bom, ruim, invertida, main_uncertainty="portion_scale"))
+    assert len(revisao.items) == 3 and revisao.limitations == ()
+    d0, d1, d2 = revisao.details
+    assert (d0.evidence, d0.grams_low, d0.grams_high, d0.uncertainty) == (
+        mp.ItemEvidence.OBSERVED, 100, 140, mp.Uncertainty.HIDDEN_PORTION)
+    assert d1.grams_low is None and d1.grams_high is None and d2.grams_low is None
+    assert revisao.main_uncertainty is mp.Uncertainty.PORTION_SCALE
+
+
+def test_enum_desconhecido_vira_none_e_leitura_v1_segue_valida():
+    revisao = mp.review_reading(_leitura(_item(evidence="chute", uncertainty=7), main_uncertainty="xx"))
+    assert revisao.details[0] == mp.PhotoItemDetail() and revisao.main_uncertainty is None
+    assert len(mp.review_reading(_leitura(_item())).items) == 1
+
+
+def test_soma_divergente_do_total_gera_limitation_sem_reescalar_pesos():
+    itens = [_item(grams_estimate=120), _item(name="feijao", grams_estimate=120)]  # soma 240
+    revisao = mp.review_reading(_leitura(*itens), total_grams=1000)
+    assert mp.LIMIT_TOTAL_GRAMS_MISMATCH in revisao.limitations
+    assert [i.grams_estimate for i in revisao.items] == [120, 120]
+
+
+def test_soma_dentro_da_tolerancia_ou_sem_total_nao_gera():
+    total = 1000
+    dentro = round(total * (1 + mp.MEAL_PHOTO_TOTAL_GRAMS_TOLERANCE / 2))
+    um = _item(grams_estimate=dentro)
+    assert mp.LIMIT_TOTAL_GRAMS_MISMATCH not in mp.review_reading(_leitura(um), total_grams=total).limitations
+    longe = _item(grams_estimate=total * 3 // 2)
+    assert mp.LIMIT_TOTAL_GRAMS_MISMATCH in mp.review_reading(_leitura(longe), total_grams=total).limitations
+    assert mp.LIMIT_TOTAL_GRAMS_MISMATCH not in mp.review_reading(_leitura(longe)).limitations
+    assert mp.LIMIT_TOTAL_GRAMS_MISMATCH not in mp.review_reading(_leitura(longe), total_grams=None).limitations
+
+
+
+def test_piso_do_peso_total_e_a_constante_do_dono():
+    assert mp.user_hints_error(None, mp.MEAL_PHOTO_TOTAL_GRAMS_MIN) is None
+    assert mp.user_hints_error(None, mp.MEAL_PHOTO_TOTAL_GRAMS_MIN - 1) == mp.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID
+
+
+def test_espelho_da_foto_exporta_piso_rotulos_e_regra_do_item_editado():
+    from app.domain import nutrition
+
+    bloco = nutrition.export_for_frontend()["meal_photo"]
+    assert bloco["total_grams_min"] == mp.MEAL_PHOTO_TOTAL_GRAMS_MIN
+    for chave in ("total_grams_invalid_label", "description_too_long_label"):
+        assert isinstance(bloco[chave], str) and bloco[chave]
+    assert str(mp.MEAL_PHOTO_TOTAL_GRAMS_MIN) in bloco["total_grams_invalid_label"]
+    assert str(mp.MEAL_PHOTO_TOTAL_GRAMS_MAX) in bloco["total_grams_invalid_label"]
+    assert str(mp.MEAL_PHOTO_DESCRIPTION_MAX_CHARS) in bloco["description_too_long_label"]
+    assert bloco["edited_item_evidence"] == mp.ItemEvidence.USER_INFORMED.value
+    assert bloco["edited_item_keeps_range"] is False

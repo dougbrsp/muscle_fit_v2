@@ -555,6 +555,22 @@ LABEL_LEGIBILITY_LABELS: Final[Mapping[LabelLegibility, str]] = {
     LabelLegibility.UNREADABLE: "Tabela ilegível",
 }
 
+# Foto do prato (#323): origem do item e incerteza principal, como a tela mostra.
+MEAL_PHOTO_EVIDENCE_LABELS: Final[Mapping[mp_mod.ItemEvidence, str]] = {
+    mp_mod.ItemEvidence.OBSERVED: "Visto na foto",
+    mp_mod.ItemEvidence.USER_INFORMED: "Informado por você",
+    mp_mod.ItemEvidence.HYPOTHESIS: "Hipótese da IA",
+}
+MEAL_PHOTO_UNCERTAINTY_LABELS: Final[Mapping[mp_mod.Uncertainty, str]] = {
+    mp_mod.Uncertainty.NONE: "Sem incerteza relevante",
+    mp_mod.Uncertainty.HIDDEN_PORTION: "Parte do alimento está coberta",
+    mp_mod.Uncertainty.PORTION_SCALE: "Tamanho da porção difícil de avaliar",
+    mp_mod.Uncertainty.PREPARATION: "Preparo incerto (cru ou cozido, pele, caldo)",
+    mp_mod.Uncertainty.ADDED_FAT: "Óleo ou gordura do preparo não visível",
+    mp_mod.Uncertainty.IDENTITY: "Alimento incerto",
+    mp_mod.Uncertainty.INEDIBLE_PARTS: "Osso, casca ou sobra no peso",
+}
+
 # Norma do rótulo nutricional, citada no prompt da leitura da foto (interpolada, nunca escrita à mão).
 LABEL_REGULATION_REFERENCE: Final[str] = "RDC nº 429/2020 e IN nº 75/2020 da Anvisa"
 
@@ -933,6 +949,16 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "ou registre a refeição à mão."
     ),
     mp_mod.LIMIT_GRAMS_OUT_OF_RANGE: "O peso estimado pela IA ficou fora do limite do diário: informe a quantidade.",
+    mp_mod.ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG: (
+        f"Descreva a refeição em até {mp_mod.MEAL_PHOTO_DESCRIPTION_MAX_CHARS} caracteres."
+    ),
+    mp_mod.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID: (
+        "Informe o peso total da refeição em gramas inteiros, "
+        f"de {mp_mod.MEAL_PHOTO_TOTAL_GRAMS_MIN} a {mp_mod.MEAL_PHOTO_TOTAL_GRAMS_MAX} g."
+    ),
+    mp_mod.LIMIT_TOTAL_GRAMS_MISMATCH: (
+        "A soma dos pesos dos itens não bate com o peso total informado: confira as quantidades antes de salvar."
+    ),
     # Leitura da refeição por IA (L5b, `meal_parse`).
     meal_parse_mod.ERR_TEXT_EMPTY: "Descreva a refeição.",
     meal_parse_mod.ERR_TEXT_TOO_LONG: f"Descreva a refeição em até {meal_parse_mod.TEXT_MAX_CHARS} caracteres.",

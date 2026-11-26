@@ -372,6 +372,18 @@ def export_for_frontend() -> dict[str, Any]:
             # Origem com que a refeição é gravada (`POST /nutrition/meals`, `ai_source`).
             "meal_source": diary.MealSource.AI_PHOTO.value,
             "quota_exceeded_label": lb.ai_quota_exceeded_label(ai_usage.AiFeature.MEAL_PHOTO),
+            # Dicas opcionais da pessoa (#323): a API confere de novo (400) antes da cota.
+            "description_max_chars": meal_photo.MEAL_PHOTO_DESCRIPTION_MAX_CHARS,
+            "total_grams_max": meal_photo.MEAL_PHOTO_TOTAL_GRAMS_MAX,
+            "total_grams_min": meal_photo.MEAL_PHOTO_TOTAL_GRAMS_MIN,
+            "total_grams_invalid_label": lb.LIMITATION_LABELS[meal_photo.ERR_MEAL_PHOTO_TOTAL_GRAMS_INVALID],
+            "description_too_long_label": lb.LIMITATION_LABELS[meal_photo.ERR_MEAL_PHOTO_DESCRIPTION_TOO_LONG],
+            "edited_item_evidence": meal_photo.MEAL_PHOTO_EDITED_ITEM_EVIDENCE.value,
+            "edited_item_keeps_range": meal_photo.MEAL_PHOTO_EDITED_ITEM_KEEPS_RANGE,
+            "evidences": _codes(meal_photo.ItemEvidence),
+            "evidence_labels": lb.labels_by_code(lb.MEAL_PHOTO_EVIDENCE_LABELS),
+            "uncertainties": _codes(meal_photo.Uncertainty),
+            "uncertainty_labels": lb.labels_by_code(lb.MEAL_PHOTO_UNCERTAINTY_LABELS),
         },
         "label_legibilities": _codes(label_photo.LabelLegibility),
         "label_legibility_labels": lb.labels_by_code(lb.LABEL_LEGIBILITY_LABELS),

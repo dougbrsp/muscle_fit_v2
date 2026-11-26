@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { MEAL_PHOTO } from '@/lib/nutrition-constants';
 import type { MealPhotoResult } from '@/lib/nutrition-types';
 import { MealParseModal } from './MealParseModal';
 
@@ -70,6 +71,86 @@ afterEach(async () => {
   host?.remove();
   document.body.innerHTML = '';
   vi.clearAllMocks();
+});
+
+async function abrir() {
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => {
+    root!.render(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(
+          MantineProvider,
+          { env: 'test' },
+          createElement(MealParseModal, { opened: true, onClose: vi.fn(), date: '2026-11-21', onParsed: vi.fn(), mode: 'photo' }),
+        ),
+      ),
+    );
+  });
+}
+
+async function digitar(el: HTMLInputElement | HTMLTextAreaElement, valor: string) {
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, valor);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+const campo = (rotulo: string) =>
+  document.getElementById(
+    (Array.from(document.querySelectorAll('label')).find((l) => l.textContent?.startsWith(rotulo)) as HTMLLabelElement).htmlFor,
+  ) as HTMLInputElement & HTMLTextAreaElement;
+
+async function enviar(arquivo: File) {
+  const entrada = document.querySelector('input[type="file"]') as HTMLInputElement;
+  Object.defineProperty(entrada, 'files', { value: [arquivo], configurable: true });
+  await act(async () => {
+    entrada.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 50));
+  });
+}
+
+describe('foto do prato: descrição e peso total opcionais', () => {
+  it('sem preencher, o contexto é o de sempre e o limite da descrição é o do espelho', async () => {
+    readMealPhoto.mockResolvedValue({ result: RESULTADO, photo: new Blob(['x']) });
+    await abrir();
+    expect(campo('Descreva a refeição').maxLength).toBe(MEAL_PHOTO.description_max_chars);
+    await enviar(new File(['a'], 'a.jpg'));
+    expect(readMealPhoto.mock.calls[0][1]).toEqual({ local_date: '2026-11-21', meal_slot: null });
+  });
+
+  it('preenchidos, descrição (sem espaços nas pontas) e peso vão no contexto', async () => {
+    readMealPhoto.mockResolvedValue({ result: RESULTADO, photo: new Blob(['x']) });
+    await abrir();
+    await digitar(campo('Descreva a refeição'), '  arroz e frango ');
+    await digitar(campo('Peso total'), '450');
+    await enviar(new File(['b'], 'b.jpg'));
+    expect(readMealPhoto.mock.calls[0][1]).toEqual({
+      local_date: '2026-11-21',
+      meal_slot: null,
+      description: 'arroz e frango',
+      total_grams: 450,
+    });
+  });
+
+  it('peso acima do teto mostra erro e bloqueia o envio', async () => {
+    await abrir();
+    await digitar(campo('Peso total'), String(MEAL_PHOTO.total_grams_max + 1));
+    expect(document.body.textContent).toContain(MEAL_PHOTO.total_grams_invalid_label);
+    const tirar = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('Tirar foto')) as HTMLButtonElement;
+    expect(tirar.disabled).toBe(true);
+  });
+
+  it('peso abaixo do piso do espelho mostra a mensagem do espelho', async () => {
+    await abrir();
+    await digitar(campo('Peso total'), String(MEAL_PHOTO.total_grams_min - 1));
+    expect(document.body.textContent).toContain(MEAL_PHOTO.total_grams_invalid_label);
+  });
 });
 
 describe('foto do prato: o modal entrega a versão reduzida', () => {

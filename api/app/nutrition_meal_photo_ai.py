@@ -25,6 +25,11 @@ confere).
 
 `prompt_version` / mudanças:
 - nutrition-photo-v1 (2026-11-02): versão inicial.
+- nutrition-photo-v2 (2026-11-26, issue #323): descrição e peso total opcionais da pessoa
+  (bloco `<dados_do_usuario>` no fim, prevalece sobre a dedução visual; texto da imagem
+  segue sem autoridade); por item `evidence`, `grams_low`/`grams_high` e `uncertainty`,
+  e `main_uncertainty` na leitura (enums do dono `meal_photo`). Os campos novos são
+  opcionais na validação: leitura sem eles continua válida.
 """
 
 from __future__ import annotations
@@ -48,10 +53,11 @@ from .domain.nutrition import ENGINE_VERSION, diary, meal_parse, meal_photo
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.ai_usage import AiFeature, AiUsageStatus
 from .openai_client import ImageInput, OpenAIGenerationError
+from .prompt_user_data import sanitize_user_text, user_data_block, user_data_rule
 
 logger = logging.getLogger("musclefit.nutrition.meal_photo_ai")
 
-PROMPT_VERSION = "nutrition-photo-v1"
+PROMPT_VERSION = "nutrition-photo-v2"
 # Pasta do template em `api/privado/prompts/`.
 PROMPT_FEATURE_DIR = "nutrition_meal_photo"
 FEATURE = AiFeature.MEAL_PHOTO.value
@@ -97,26 +103,67 @@ def prompt_values() -> dict[str, str]:
         "status_incerto": meal_photo.PlateStatus.UNCLEAR.value,
         "gramas_max": f"{diary.ITEM_AMOUNT_MAX:g}",
         "itens_max": str(diary.MEAL_MAX_ITEMS),
+        "regra_dados_usuario": user_data_rule(),
+        "evidencia_vista": meal_photo.ItemEvidence.OBSERVED.value,
+        "evidencia_informada": meal_photo.ItemEvidence.USER_INFORMED.value,
+        "evidencia_hipotese": meal_photo.ItemEvidence.HYPOTHESIS.value,
+        "incerteza_nenhuma": meal_photo.Uncertainty.NONE.value,
+        "incerteza_oculta": meal_photo.Uncertainty.HIDDEN_PORTION.value,
+        "incerteza_escala": meal_photo.Uncertainty.PORTION_SCALE.value,
+        "incerteza_preparo": meal_photo.Uncertainty.PREPARATION.value,
+        "incerteza_gordura": meal_photo.Uncertainty.ADDED_FAT.value,
+        "incerteza_identidade": meal_photo.Uncertainty.IDENTITY.value,
+        "incerteza_partes": meal_photo.Uncertainty.INEDIBLE_PARTS.value,
     }
 
 
-def build_prompt(values: Optional[Mapping[str, str]] = None) -> str:
+_NAO_INFORMADO = "não informado"
+
+
+def build_prompt(
+    values: Optional[Mapping[str, str]] = None, *, description: Any = None, total_grams: Optional[int] = None
+) -> str:
     """Prosa em `api/privado/prompts/nutrition_meal_photo/<PROMPT_VERSION>.md`
-    (`prompt_store`). Não há dado do usuário no texto: a entrada é só a imagem."""
-    return prompt_store.render(PROMPT_FEATURE_DIR, PROMPT_VERSION, dict(values) if values is not None else prompt_values())
+    (`prompt_store`) e, no fim, o que a pessoa informou (`<PROMPT_VERSION>.pedido.md`):
+    a descrição saneada dentro do bloco de dados do usuário e o peso total."""
+    instrucoes = prompt_store.render(
+        PROMPT_FEATURE_DIR, PROMPT_VERSION, dict(values) if values is not None else prompt_values()
+    )
+    texto = sanitize_user_text(description, meal_photo.MEAL_PHOTO_DESCRIPTION_MAX_CHARS)
+    pedido = prompt_store.render(
+        PROMPT_FEATURE_DIR,
+        f"{PROMPT_VERSION}.pedido",
+        {
+            "descricao": user_data_block(texto) if texto else _NAO_INFORMADO,
+            "peso_total": f"{int(total_grams)} g" if total_grams else _NAO_INFORMADO,
+        },
+    )
+    return f"{instrucoes}\n\n{pedido}"
 
 
 def output_schema() -> dict[str, Any]:
     """JSON Schema strict: o item é o da leitura por texto; no lugar de `notes`, o
-    `plate_status` (sem texto livre vindo da foto até a tela)."""
+    `plate_status` (sem texto livre vindo da foto até a tela). v2 (#323): por item a
+    evidência, a faixa de gramas e a incerteza; na leitura, a incerteza principal."""
     itens = nutrition_meal_parse_ai.output_schema()["properties"]["items"]
+    incerteza = {"type": "string", "enum": [valor.value for valor in meal_photo.Uncertainty]}
+    item = itens["items"]
+    item["required"] = [*item["required"], "evidence", "grams_low", "grams_high", "uncertainty"]
+    item["properties"] = {
+        **item["properties"],
+        "evidence": {"type": "string", "enum": [valor.value for valor in meal_photo.ItemEvidence]},
+        "grams_low": {"type": ["number", "null"]},
+        "grams_high": {"type": ["number", "null"]},
+        "uncertainty": incerteza,
+    }
     return {
         "type": "object",
         "additionalProperties": False,
-        "required": ["plate_status", "items"],
+        "required": ["plate_status", "items", "main_uncertainty"],
         "properties": {
             "plate_status": {"type": "string", "enum": [status.value for status in meal_photo.PlateStatus]},
             "items": itens,
+            "main_uncertainty": incerteza,
         },
     }
 
@@ -142,6 +189,11 @@ _ItemOut = create_model(  # type: ignore[call-overload]
     preparation=(Optional[StrictStr], ...),
     confidence=(_Number, ...),
     **{meal_parse.ESTIMATE_KEY: (Optional[_EstimateOut], ...)},
+    # v2 (#323): opcionais na validação (leitura sem eles segue válida); o motor descarta o incoerente.
+    evidence=(Optional[StrictStr], None),
+    grams_low=(Optional[_Number], None),
+    grams_high=(Optional[_Number], None),
+    uncertainty=(Optional[StrictStr], None),
 )
 
 
@@ -153,6 +205,7 @@ class MealPhotoOut(BaseModel):
 
     plate_status: StrictStr
     items: list[_ItemOut] = Field(...)  # type: ignore[valid-type]
+    main_uncertainty: Optional[StrictStr] = None
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +234,19 @@ class MealPhotoReading:
     tokens_out: Optional[int]
 
 
-def read_meal_photo(image: bytes, *, user_id: Any = None, timeout: float = LLM_TIMEOUT_SECONDS) -> MealPhotoReading:
-    """Uma chamada com a foto. `OpenAIGenerationError` da chamada propaga; forma
-    inválida vira `MealPhotoJobError(ERR_MEAL_READING_INVALID)` com os tokens gastos."""
+def read_meal_photo(
+    image: bytes,
+    *,
+    user_id: Any = None,
+    timeout: float = LLM_TIMEOUT_SECONDS,
+    description: Any = None,
+    total_grams: Optional[int] = None,
+) -> MealPhotoReading:
+    """Uma chamada com a foto e as dicas da pessoa. `OpenAIGenerationError` da chamada
+    propaga; forma inválida vira `MealPhotoJobError(ERR_MEAL_READING_INVALID)` com os
+    tokens gastos."""
     resultado = openai_client.call_openai_structured_vision(
-        build_prompt(),
+        build_prompt(description=description, total_grams=total_grams),
         [ImageInput(image, meal_photo.MEAL_PHOTO_CONTENT_TYPE, meal_photo.MEAL_IMAGE_DETAIL)],
         model_name(),
         output_schema(),
@@ -223,16 +284,23 @@ def job_result(
     status: meal_photo.PlateStatus,
     payload: Mapping[str, Any],
     aluno: int,
+    review: Optional[meal_photo.MealPhotoReview] = None,
 ) -> dict[str, Any]:
     """Mesma forma do resultado da leitura por texto (o editor é o mesmo), mais o
-    `plate_status` e a natureza proposta de cada item."""
+    `plate_status`, a natureza proposta de cada item e, v2 (#323), a evidência, a faixa
+    e a incerteza do item e a incerteza principal (null quando a leitura não as trouxe)."""
     corpo = nutrition_meal_parse_worker.result_public(resultado, linhas)
-    for publico, item in zip(corpo["items"], resultado.items):
+    detalhes = review.details if review else ()
+    for indice, (publico, item) in enumerate(zip(corpo["items"], resultado.items)):
         natureza = meal_photo.item_nature(item)
         publico["nature"] = natureza.value if natureza else None
+        detalhe = detalhes[indice] if indice < len(detalhes) else meal_photo.PhotoItemDetail()
+        publico.update(detalhe.to_dict())
+    principal = review.main_uncertainty if review else None
     return {
         **corpo,
         "plate_status": status.value,
+        "main_uncertainty": principal.value if principal else None,
         "job_id": payload.get("job_id"),
         "user_id": aluno,
         "local_date": payload.get("local_date"),
@@ -271,8 +339,12 @@ def run_meal_photo_job(event: Mapping[str, Any]) -> dict[str, Any]:
         erro = meal_photo.upload_error(len(imagem), meal_photo.MEAL_PHOTO_CONTENT_TYPE)
         if erro:
             raise MealPhotoJobError(erro)
-        leitura = read_meal_photo(imagem, user_id=user_id)
-        revisao = meal_photo.review_reading(leitura.data)
+        # Dicas da pessoa (#323), já conferidas na api-core; nunca vão para log. Defesa:
+        # total fora da faixa do dono é ignorado.
+        total = payload.get("total_grams")
+        total = None if meal_photo.user_hints_error(None, total) else total
+        leitura = read_meal_photo(imagem, user_id=user_id, description=payload.get("description"), total_grams=total)
+        revisao = meal_photo.review_reading(leitura.data, total_grams=total)
         solicitante = int(user_id)
         aluno = int(payload.get("diary_user_id") or solicitante)
         try:
@@ -286,7 +358,7 @@ def run_meal_photo_job(event: Mapping[str, Any]) -> dict[str, Any]:
                 tokens_out=leitura.tokens_out,
             ) from exc
         decididos = meal_parse.build_result(revisao.items, rankings, revisao.limitations)
-        resultado = job_result(decididos, linhas, leitura, revisao.status, payload, aluno)
+        resultado = job_result(decididos, linhas, leitura, revisao.status, payload, aluno, revisao)
     except MealPhotoJobError as exc:
         _fail(usage_id, exc, code=exc.code, model=exc.model, tokens_in=exc.tokens_in, tokens_out=exc.tokens_out)
         raise
