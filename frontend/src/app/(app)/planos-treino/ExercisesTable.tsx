@@ -755,7 +755,7 @@ export function ExercisesTable({
                       miw={COL_WIDTH.rpe}
                       disabled={readOnly}
                       value={exercise.rpe_target || ''}
-                      onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value, rpe_edited: false })}
+                      onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value, rpe_targets_by_set: [], rpe_edited: false })}
                       placeholder={suggestionLoadingIndex === index ? 'Calculando...' : DEFAULT_RPE_TARGET}
                       rightSection={suggestionLoadingIndex === index ? <Loader size="xs" /> : undefined}
                     />

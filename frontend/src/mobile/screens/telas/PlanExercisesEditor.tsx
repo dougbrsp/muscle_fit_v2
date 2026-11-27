@@ -8,7 +8,6 @@ import {
   Loader,
   NumberInput,
   Stack,
-  Switch,
   Text,
   Textarea,
   TextInput,
@@ -178,7 +177,7 @@ export function PlanExercisesEditor({
       if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
       // A sugestão traz o RPE em texto: a lista por série antiga sai (senão a tela mostraria uma e o save enviaria outra).
-      next[index] = { ...next[index], ...patch, rpe_targets_by_set: [], rpe_edited: false };
+      next[index] = { ...next[index], ...patch, rpe_edited: false };
       onChange(next);
     } catch {
       // silencioso: os campos continuam como estavam (igual ao desktop).
@@ -351,18 +350,11 @@ export function PlanExercisesEditor({
                 label="RPE"
                 disabled={readOnly}
                 value={exercise.rpe_target || ''}
-                onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value, rpe_edited: false })}
+                onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value, rpe_targets_by_set: [], rpe_edited: false })}
                 placeholder={suggestionLoading ? 'Calculando...' : DEFAULT_RPE_TARGET}
               />
             )}
           </Group>
-          <Switch
-            size="md"
-            label="Aquecimento"
-            disabled={readOnly}
-            checked={!!exercise.warmup}
-            onChange={(e) => updateExercise(index, { warmup: e.currentTarget.checked })}
-          />
           <Textarea
             size="md"
             label="Notas"
