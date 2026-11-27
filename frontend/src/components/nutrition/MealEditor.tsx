@@ -201,6 +201,12 @@ function ItemRow({
     if (tentativasInvalidas > 0 && valor !== undefined && quantidade(valor) === null) setErroQuantidade(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tentativasInvalidas]);
+  function aplicarRascunho(valor: number | string) {
+    pendentes.current.set(item.key, valor);
+    sincronizar();
+    setRascunho(valor);
+    setErroQuantidade(false);
+  }
   function confirmarQuantidade() {
     const valor = pendentes.current.get(item.key);
     if (valor === undefined) return;
@@ -244,17 +250,21 @@ function ItemRow({
         <NumberInput
           label="Quantidade"
           value={rascunho ?? item.quantity}
-          onChange={(valor) => {
-            pendentes.current.set(item.key, valor);
-            sincronizar();
-            setRascunho(valor);
-            setErroQuantidade(false);
+          onChange={aplicarRascunho}
+          onPaste={(e) => {
+            // Colagem substitui o campo inteiro; "1.234" é lido como decimal (1,234). Texto não reconhecido é ignorado (a pessoa digita).
+            e.preventDefault();
+            const texto = e.clipboardData.getData('text').trim();
+            if (!/^(\d+|\d*[.,]\d{1,3})$/.test(texto)) return;
+            aplicarRascunho(Number(texto.replace(',', '.')));
           }}
           onBlur={confirmarQuantidade}
           onKeyDown={(e) => {
             if (e.key === 'Enter') confirmarQuantidade();
           }}
           enterKeyHint="done"
+          inputMode="decimal"
+          decimalSeparator=","
           error={erroQuantidade ? 'Informe a quantidade' : undefined}
           min={0}
           decimalScale={3}
