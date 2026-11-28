@@ -46,6 +46,7 @@ import type {
   NutritionPlan,
   NutritionPlanListResponse,
   NutritionPlanPayload,
+  NutritionPlanComparison,
   NutritionPlanPreview,
   NutritionPlanPublishPayload,
   NutritionPlanSaved,
@@ -119,6 +120,25 @@ export function planPreviewQuery(plan: { id: number; updated_at: string | null; 
   return {
     queryKey: [...nutritionKeys.preview(plan.id), plan.updated_at, plan.state] as const,
     queryFn: () => previewNutritionPlan(plan.id),
+    retry: false as const,
+  };
+}
+
+export function comparePlanWithCurrent(planId: number): Promise<NutritionPlanComparison> {
+  return apiFetch<NutritionPlanComparison>(`/nutrition/plans/${planId}/comparison`, { method: 'POST' });
+}
+
+/**
+ * Comparação rascunho × vigente (#344). A chave começa pela da prévia (salvar o rascunho, que invalida
+ * `preview(id)`, refaz as duas) e leva a versão do rascunho e a do vigente (mudar o vigente refaz).
+ */
+export function planComparisonQuery(
+  plan: { id: number; updated_at: string | null },
+  current: { id: number; updated_at: string | null } | null,
+) {
+  return {
+    queryKey: [...nutritionKeys.preview(plan.id), 'comparison', plan.updated_at, current?.id ?? null, current?.updated_at ?? null] as const,
+    queryFn: () => comparePlanWithCurrent(plan.id),
     retry: false as const,
   };
 }
