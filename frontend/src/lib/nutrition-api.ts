@@ -135,8 +135,10 @@ export function comparePlanWithCurrent(planId: number): Promise<NutritionPlanCom
 export function planComparisonQuery(
   plan: { id: number; updated_at: string | null },
   current: { id: number; updated_at: string | null } | null,
+  enabled = true,
 ) {
   return {
+    enabled,
     queryKey: [...nutritionKeys.preview(plan.id), 'comparison', plan.updated_at, current?.id ?? null, current?.updated_at ?? null] as const,
     queryFn: () => comparePlanWithCurrent(plan.id),
     retry: false as const,

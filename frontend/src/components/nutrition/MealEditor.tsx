@@ -196,6 +196,7 @@ function ItemRow({
   // Texto em edição da quantidade: só vai ao `form` (e ao preview) no blur/Enter; o ref deixa o Salvar ler o valor ainda em foco.
   const [rascunho, setRascunho] = useState<number | string | null>(null);
   const [erroQuantidade, setErroQuantidade] = useState(false);
+  const [colagemInvalida, setColagemInvalida] = useState(false);
   useEffect(() => {
     const valor = pendentes.current.get(item.key);
     if (tentativasInvalidas > 0 && valor !== undefined && quantidade(valor) === null) setErroQuantidade(true);
@@ -206,6 +207,7 @@ function ItemRow({
     sincronizar();
     setRascunho(valor);
     setErroQuantidade(false);
+    setColagemInvalida(false);
   }
   function confirmarQuantidade() {
     const valor = pendentes.current.get(item.key);
@@ -252,10 +254,13 @@ function ItemRow({
           value={rascunho ?? item.quantity}
           onChange={aplicarRascunho}
           onPaste={(e) => {
-            // Colagem substitui o campo inteiro; "1.234" é lido como decimal (1,234). Texto não reconhecido é ignorado (a pessoa digita).
+            // Colagem substitui o campo inteiro; "1.234" é lido como decimal (1,234). Texto não reconhecido não altera o valor e avisa.
             e.preventDefault();
             const texto = e.clipboardData.getData('text').trim();
-            if (!/^(\d+|\d*[.,]\d{1,3})$/.test(texto)) return;
+            if (!/^(\d+|\d*[.,]\d{1,3})$/.test(texto)) {
+              setColagemInvalida(true);
+              return;
+            }
             aplicarRascunho(Number(texto.replace(',', '.')));
           }}
           onBlur={confirmarQuantidade}
@@ -265,7 +270,7 @@ function ItemRow({
           enterKeyHint="done"
           inputMode="decimal"
           decimalSeparator=","
-          error={erroQuantidade ? 'Informe a quantidade' : undefined}
+          error={erroQuantidade ? 'Informe a quantidade' : colagemInvalida ? 'Cole só um número, como 1,5' : undefined}
           min={0}
           decimalScale={3}
           style={{ flex: '1 1 0', minWidth: 0 }}

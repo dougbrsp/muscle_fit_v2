@@ -2459,6 +2459,19 @@ PADROES: tuple[Padrao, ...] = (
             "api/app/intelligence/training_load_service.py",
         ),
     ),
+    Padrao(
+        chave="comparacao_plano_nutricao",
+        regra="diferença/percentual da comparação plano vigente × rascunho (#344) calculados fora do dono",
+        # `plan_comparison.compare_value` é o único que subtrai rascunho − vigente e divide pelo vigente;
+        # rota, SQL e tela só repassam `diff`/`diff_percent` prontos.
+        regex=re.compile(
+            r"\b(?:diff|diff_percent|diffPercent)\s*[:=](?!=)[^=\n]*\b(?:draft|current)\w*"
+            r"(?:\.\w+|\[[^\]]*\])*\)*\s*[-/]\s*[\w(]"
+        ),
+        donos=("api/app/domain/nutrition/plan_comparison.py",),
+        inventario="#344",
+        escopo=("api/app/nutrition_plans.py", "frontend/src/components/nutrition/PlanComparison*"),
+    ),
 )
 
 PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
@@ -2470,6 +2483,7 @@ PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
 # ---------------------------------------------------------------------------
 
 ALLOWLIST: dict[str, dict[str, int]] = {
+    "comparacao_plano_nutricao": {},  # #344: nasce vazia
     "deload_filtro_sql": {},
     "aprimoramento_tecnica_filtro_sql": {},
     "aprimoramento_tecnica_chave_literal": {},  # #196 (§105): nasce vazia
@@ -2954,6 +2968,12 @@ def test_regra_nao_se_espalha_fora_do_dono(padrao: Padrao):
 # ---------------------------------------------------------------------------
 
 EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "comparacao_plano_nutricao": (
+        ("diff = draft - current", "const diff = draft.kcal - current.kcal;", "diff: round(draft_kcal - current_kcal, 1)",
+         "diff_percent = (draft - current) / current * 100", "const diffPercent = (draft.kcal - current.kcal) / current.kcal;"),
+        ("value.diff == null", "diff: v.diff", "diff_percent: number | null;", "diff = None if current is None else x",
+         "const pct = value.diff_percent == null ? '' : signed(value.diff_percent, 1)", "diff: row[\"diff\"]"),
+    ),
     "aprimoramento_tecnica_filtro_sql": (
         ("AND e.form_practice = 0", "WHERE ex.form_practice <> 1", "form_practice=1", "e2.FORM_PRACTICE != 0",
          "AND e.form_practice = FALSE", "AND e.form_practice > 0", "WHERE e.form_practice < 1",

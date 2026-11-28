@@ -4,7 +4,7 @@ import { createElement, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NutritionTargetDetail } from '@/lib/nutrition-types';
-import { nutritionKeys, planComparisonQuery, planPreviewQuery } from '@/lib/nutrition-api';
+import { planComparisonQuery, planPreviewQuery } from '@/lib/nutrition-api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PlanPreview, TodayTargetCard } from './PlanPreview';
 
@@ -222,7 +222,7 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
         createElement(
           QueryClientProvider,
           { client },
-          createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlanId: 9, onPublished: () => {} })),
+          createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlan: { id: 9, updated_at: 't' }, onPublished: () => {} })),
         ),
       );
     });
@@ -254,7 +254,7 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
         createElement(
           QueryClientProvider,
           { client },
-          createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlanId: 1, onPublished: () => {} })),
+          createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlan: { id: 1, updated_at: 't' }, onPublished: () => {} })),
         ),
       );
     });
@@ -265,14 +265,13 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
 
   it('comparação com o vigente: só no rascunho com vigente diferente, antes do botão Publicar', async () => {
     const vigente = { id: 3, user_id: 1, updated_at: 'v1', state: 'current' };
-    const montarCom = async (plano: never, currentPlanId: number | null, comComparacao: boolean) => {
+    const montarCom = async (plano: never, currentPlan: { id: number; updated_at: string | null } | null, comComparacao: boolean) => {
       const previa = {
         plan: plano, today: '2026-11-24', publish_days: ['2026-11-24'], limitations: [], blocking: [], can_publish: true, manual_check: null,
         subject: {}, goal: {}, projection: { status: 'x', reason_items: [] }, target: alvo({}), warnings: [], week: [],
       };
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
       client.setQueryData(planPreviewQuery(plano).queryKey, previa);
-      client.setQueryData(nutritionKeys.plansList(1, false), { user: {}, items: [plano, vigente] });
       if (comComparacao) {
         client.setQueryData(planComparisonQuery(plano, vigente).queryKey, { status: 'no_current', reasons: [], today: '2026-11-24', current: null, draft: null, comparison: null });
       }
@@ -282,13 +281,13 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
           createElement(
             QueryClientProvider,
             { client },
-            createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlanId, onPublished: () => {} })),
+            createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlan, onPublished: () => {} })),
           ),
         );
       });
     };
     const rascunho = { id: 9, user_id: 1, updated_at: 't', state: 'draft' } as never;
-    await montarCom(rascunho, 3, true);
+    await montarCom(rascunho, { id: 3, updated_at: 'v1' }, true);
     const aviso = host.querySelector('[data-testid="comparacao-sem-vigente"]');
     expect(aviso).not.toBeNull();
     const publicar = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Publicar plano')!;
@@ -296,7 +295,7 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
 
     await act(async () => root?.unmount());
     host.innerHTML = '';
-    await montarCom({ ...vigente } as never, 3, false);
+    await montarCom({ ...vigente } as never, { id: 3, updated_at: 'v1' }, false);
     expect(host.textContent).not.toMatch(/Comparando|vigente para comparar|Comparação com o plano vigente/);
   });
 

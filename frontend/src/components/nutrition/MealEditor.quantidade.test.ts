@@ -185,8 +185,23 @@ describe('MealEditor: quantidade confirmada só no blur', () => {
       });
       expect(ev.defaultPrevented).toBe(true);
       expect(campo().value).toBe('150');
+      expect(host.textContent).toContain('Cole só um número, como 1,5');
     }
     expect(campo().value).toBe('150');
+  });
+
+  it('o aviso de colagem inválida some ao digitar e ao colar algo válido', async () => {
+    const el = campo();
+    await focar(el);
+    await colar(el, 'abc');
+    expect(host.textContent).toContain('Cole só um número, como 1,5');
+    expect(campo().getAttribute('aria-invalid')).toBe('true');
+    await digitar(campo(), '200');
+    expect(host.textContent).not.toContain('Cole só um número');
+    await colar(campo(), 'abc');
+    expect(host.textContent).toContain('Cole só um número');
+    await colar(campo(), '1,5');
+    expect(host.textContent).not.toContain('Cole só um número');
   });
 
   it('0,25 e salvar com o campo em foco gravam 0.25', async () => {
