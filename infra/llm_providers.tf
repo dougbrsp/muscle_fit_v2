@@ -20,8 +20,12 @@
 # o motor monta o trio): 47/50 (94%) contra 26/30 (87%) da OpenAI v15, zero
 # saida cortada, zero timeout, p95 26 s (docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md).
 #
-# meal_photo (foto do prato, nutricao L10, decisao D1 de 2026-11-02) nasce no Haiku
-# com o esforco da label_photo e fallback openai, ainda SEM eval pago proprio.
+# meal_photo (foto do prato, nutricao L10, D1 de 2026-11-02) nasceu no Haiku. Benchmark de
+# 2026-11-28 (#326, 18 pratos Nutrition5k): OpenAI gpt-5.4-mini erro de kcal p50 26% contra 47%
+# do Haiku; massa 33% contra 87%; 2,5 s contra 6,9 s; US$ 0,0031 contra US$ 0,0010 por leitura.
+# Decisao do usuario: primario openai, fallback anthropic (Haiku, medium; as envs de modelo/
+# esforco do Claude continuam publicadas para o fallback). ROLLBACK: meal_photo de volta a
+# "anthropic" em llm_provider_by_feature e "openai" em llm_fallback_provider_by_feature.
 #
 # plan_suggestion (sugestao de metas, nutricao N6, decisao D3) NAO publica env propria: le as de
 # meal_parse (`llm_anthropic.FEATURE_CONFIG_SOURCE`), porque o bloco de envs esta no limite do
@@ -42,7 +46,7 @@ variable "llm_provider_by_feature" {
   default = {
     cardio_agent         = "anthropic"
     label_photo          = "anthropic"
-    meal_photo           = "anthropic"
+    meal_photo           = "openai"
     insights             = "anthropic"
     meal_parse           = "anthropic"
     exercise_description = "anthropic"
@@ -126,12 +130,12 @@ variable "llm_fallback_provider" {
 # so as features ligadas no Claude recebem a env, e as que seguem na OpenAI
 # ficam sem nada (o global continua "").
 variable "llm_fallback_provider_by_feature" {
-  description = "Fallback por feature quando o Claude falha: openai. Feature ausente = o global (llm_fallback_provider)."
+  description = "Fallback por feature quando o provedor primario falha: openai ou anthropic. Feature ausente = o global (llm_fallback_provider)."
   type        = map(string)
   default = {
     cardio_agent         = "openai"
     label_photo          = "openai"
-    meal_photo           = "openai"
+    meal_photo           = "anthropic"
     insights             = "openai"
     meal_parse           = "openai"
     exercise_description = "openai"
@@ -140,8 +144,8 @@ variable "llm_fallback_provider_by_feature" {
   }
 
   validation {
-    condition     = alltrue([for p in values(var.llm_fallback_provider_by_feature) : p == "openai"])
-    error_message = "llm_fallback_provider_by_feature aceita so openai."
+    condition     = alltrue([for p in values(var.llm_fallback_provider_by_feature) : contains(["openai", "anthropic"], p)])
+    error_message = "llm_fallback_provider_by_feature aceita so openai ou anthropic."
   }
 }
 

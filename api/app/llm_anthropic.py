@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import os
 import re
+import urllib.error
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, Mapping, Optional, Sequence
@@ -232,12 +233,24 @@ def anthropic_thinking_for(feature: Optional[str]) -> str:
 
 
 def fallback_provider_for(feature: Optional[str]) -> Optional[str]:
-    """`openai` quando o fallback esta ligado (env da feature vence a global)."""
+    """Provedor de fallback (env da feature vence a global; a global so aceita `openai`).
+
+    A da feature aceita `openai` (primario anthropic) ou `anthropic` (primario openai).
+    `anthropic` com primario anthropic e valor fora de `PROVIDERS`: aviso e `None`.
+    `openai` com primario openai continua devolvido como antes, sem aviso (o modo de
+    cortar a sugestao herda o fallback de meal_parse), mas e inerte: `_dispatch` so
+    refaz no provedor DIFERENTE do primario."""
     name, raw = _config_env(ENV_FALLBACK_PREFIX, feature)
-    value = raw.lower() or _env(ENV_FALLBACK_GLOBAL).lower()
+    value = raw.lower()
     if not value:
-        return None
-    if value != PROVIDER_OPENAI:
+        name, value = ENV_FALLBACK_GLOBAL, _env(ENV_FALLBACK_GLOBAL).lower()
+        if not value:
+            return None
+        if value != PROVIDER_OPENAI:
+            _invalid(name, value)
+            return None
+        return value
+    if value not in PROVIDERS or (value == PROVIDER_ANTHROPIC and provider_for(feature) == PROVIDER_ANTHROPIC):
         _invalid(name, value)
         return None
     return value
@@ -275,6 +288,22 @@ def fallback_eligible(exc: BaseException) -> bool:
     if exc.code in _FALLBACK_CODES:
         return True
     return exc.status is not None and exc.code != OPENAI_TIMEOUT
+
+
+# Caminho inverso (primario openai, fallback anthropic; foto do prato, issue #326):
+# so falha TRANSITORIA da OpenAI refaz no Claude - 429 e 5xx (ja depois do retry
+# de `_post`), timeout (inclusive 408; na pratica o orcamento que sobra costuma ficar
+# abaixo do minimo de uma tentativa e o `_dispatch` nao refaz) e erro de rede antes
+# da resposta (`URLError` sem status). NAO entram: 4xx de pedido/conteudo (400,
+# moderacao), chave ausente/invalida (401/403, `OPENAI_API_KEY` vazia: erro de
+# configuracao, tem de aparecer em vez de ser mascarado pelo Claude) e resposta
+# gerada mas inutil (JSON invalido, cortada: ja foi cobrada).
+def openai_fallback_eligible(exc: BaseException) -> bool:
+    if not isinstance(exc, OpenAIGenerationError) or getattr(exc, "provider", None) == PROVIDER_ANTHROPIC:
+        return False
+    if exc.retryable or exc.code == OPENAI_TIMEOUT:
+        return True
+    return exc.status is None and isinstance(exc.__cause__, urllib.error.URLError)
 
 
 def _error(message: str, *, code: Optional[str] = None, status: Optional[int] = None,
