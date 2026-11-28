@@ -65,6 +65,7 @@ from .domain.nutrition.daily_target import (
     week_window,
 )
 from .domain.nutrition.manual_targets import macro_kcal_shares
+from .domain.nutrition.plan_comparison import build_comparison
 from .domain.nutrition.plan import (
     ERR_DRAFT_LIMIT,
     MAX_DRAFTS_PER_USER,
@@ -213,6 +214,8 @@ _ARCHIVE_SQL = (
 )
 _UNARCHIVE_SQL = f"UPDATE {TABLE} SET archived_at = NULL WHERE id = %s AND archived_at IS NOT NULL"
 _DRAFT_COUNT_SQL = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE user_id = %s AND status = %s"
+# Vigente (leitura, sem trava): a comparação (#344) só lê.
+_CURRENT_ID_SQL = f"SELECT id FROM {TABLE} WHERE user_id = %s AND status = %s AND superseded_at IS NULL"
 
 DRAFT = PlanStatus.DRAFT.value
 PUBLISHED = PlanStatus.PUBLISHED.value
@@ -702,13 +705,63 @@ def preview_plan(request: Request, plan_id: int, identity: Identity = Depends(re
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
             usuario = fetch_target_user(cur, aluno)
-        hoje = _today_for(conn, aluno)
-        with conn.cursor() as cur:
-            semana, passado = _week_and_past(cur, aluno, settings_from_row(linha), hoje)
+        return _plan_preview(conn, linha, aluno, usuario, _today_for(conn, aluno))
+
+
+def _plan_preview(conn: Any, linha: dict[str, Any], aluno: int, usuario: dict[str, Any], hoje: date) -> dict[str, Any]:
+    """Prévia de `linha` na semana de `hoje` (422 com o sujeito incompleto). Caminho único da preview e da comparação."""
+    with conn.cursor() as cur:
+        semana, passado = _week_and_past(cur, aluno, settings_from_row(linha), hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
         raise subject_incomplete_error(comp_hoje)
     return _preview_payload(linha, usuario, semana, hoje, passado)
+
+
+def _side_preview(conn: Any, linha: dict[str, Any], aluno: int, usuario: dict[str, Any], hoje: date) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """Um lado da comparação: (prévia, None) ou (None, código do erro HTTP do motor)."""
+    try:
+        return _plan_preview(conn, linha, aluno, usuario, hoje), None
+    except HTTPException as erro:
+        detalhe = erro.detail if isinstance(erro.detail, dict) else {}
+        return None, str(detalhe.get("error") or erro.status_code)
+
+
+@router.post("/plans/{plan_id}/comparison")
+def compare_plan(request: Request, plan_id: int, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
+    """Prévia deste plano × a do vigente do mesmo aluno, com o MESMO `hoje` e a MESMA semana, sem gravar nada (#344).
+    Diferenças e status: `domain/nutrition/plan_comparison`."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_plan_tables(cur)
+            linha = _fetch_plan(cur, plan_id)
+            aluno = resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
+            usuario = fetch_target_user(cur, aluno)
+            cur.execute(_CURRENT_ID_SQL, (aluno, PUBLISHED))
+            vigente_id = (cur.fetchone() or {}).get("id")
+            vigente = _fetch_plan(cur, int(vigente_id)) if vigente_id is not None else None
+        hoje = _today_for(conn, aluno)
+        mesmo = vigente is not None and int(vigente["id"]) == int(linha["id"])
+        rascunho, erro_rascunho = _side_preview(conn, linha, aluno, usuario, hoje)
+        atual, erro_atual = (
+            _side_preview(conn, vigente, aluno, usuario, hoje) if vigente is not None and not mesmo else (rascunho, erro_rascunho)
+        )
+    resultado = build_comparison(
+        atual if vigente is not None else None,
+        rascunho,
+        has_current=vigente is not None,
+        same_plan=mesmo,
+        current_error=erro_atual,
+        draft_error=erro_rascunho,
+    )
+    return {
+        "status": resultado["status"],
+        "reasons": resultado["reasons"],
+        "today": hoje.isoformat(),
+        "current": atual if vigente is not None else None,
+        "draft": rascunho,
+        "comparison": resultado["comparison"],
+    }
 
 
 def published_preview(cur: Any, aluno: int, linha: dict[str, Any], settings: PlanSettings, hoje: date) -> Optional[dict[str, Any]]:

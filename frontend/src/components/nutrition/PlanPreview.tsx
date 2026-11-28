@@ -6,6 +6,7 @@ import { IconAlertTriangle, IconCheck, IconRefresh } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdaptiveEnergyStatus } from './AdaptiveEnergyCard';
 import { NutritionLimitations } from './NutritionLimitations';
+import { PlanComparison } from './PlanComparison';
 import { TdeeBreakdown } from './TdeeBreakdown';
 import { SubjectCard } from './SubjectCard';
 import { WeekTargetsTable } from './WeekTargetsTable';
@@ -13,6 +14,7 @@ import { formatNumberOrDash } from '@/lib/format';
 import {
   nutritionErrorCode,
   nutritionErrorInfo,
+  nutritionKeys,
   planPreviewQuery,
   publishNutritionPlan,
   recomputeNutritionTargets,
@@ -33,6 +35,7 @@ import type {
   NutritionGoal,
   NutritionManualCheck,
   NutritionPlan,
+  NutritionPlanListResponse,
   NutritionProjection,
   NutritionPublishResponse,
   NutritionTargetDetail,
@@ -214,6 +217,14 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
   const isCurrent = plan.state === 'current';
 
   const previewQuery = useQuery(planPreviewQuery(plan));
+  // Versão do vigente lida da lista de planos em cache (a tela que a carrega re-renderiza esta prévia quando ela muda).
+  const currentPlan =
+    isDraft && currentPlanId != null && currentPlanId !== plan.id
+      ? (qc
+          .getQueriesData<NutritionPlanListResponse>({ queryKey: nutritionKeys.plans(plan.user_id) })
+          .flatMap(([, data]) => data?.items ?? [])
+          .find((item) => item.id === currentPlanId) ?? { id: currentPlanId, updated_at: null })
+      : null;
 
   const publishMutation = useMutation({
     mutationFn: () => publishNutritionPlan(plan.id, currentPlanId, plan.updated_at),
@@ -296,6 +307,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
           ))}
       </Stack>
       <NutritionLimitations items={withoutDayWarnings(preview.limitations, diasExibidos)} title="Avisos do motor nesta semana" />
+      {currentPlan && <PlanComparison plan={plan} current={currentPlan} />}
 
       {isDraft && (
         <Group

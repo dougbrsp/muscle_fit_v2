@@ -86,6 +86,7 @@ from tests.unit.test_access_guarda_cobertura_rotas import (
     ROTA_NOVA_ALIMENTOS_EXCLUIR,
     ROTA_NOVA_ALIMENTOS_LISTA,
     ROTAS_NOVAS_PERFIS_RESISTENCIA,
+    ROTA_NOVA_COMPARACAO_PLANO,
     ROTA_NOVA_DIAGNOSTICO,
     ROTA_NOVA_REDUNDANCIA,
     ROTAS_NOVAS_RECEITAS,
@@ -527,7 +528,7 @@ def _rotas_2d1() -> dict[str, list[tuple[str, str]]]:
                 continue
             for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
                 chave = f"{metodo} {route.path}"
-                if chave in com_permissao:
+                if chave in com_permissao and chave not in ROTAS_NOVAS_POS_RETRATO:  # #344: nova, sem classe no retrato
                     rotas[chave] = com_permissao[chave]
     return rotas
 
@@ -861,7 +862,8 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
 
 def test_paridade_cobre_as_379_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 388
+    assert len(com_permissao) == 389
+    # + 1 do #344 (ROTA_NOVA_COMPARACAO_PLANO, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #288 fatia 3 (ROTA_NOVA_DIAGNOSTICO, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #288 fatia 2 (ROTA_NOVA_REDUNDANCIA, so em ROTAS_NOVAS_POS_RETRATO)
     # + 7 do #286 (ROTAS_NOVAS_RECEITAS, so em ROTAS_NOVAS_POS_RETRATO)
@@ -871,8 +873,8 @@ def test_paridade_cobre_as_379_rotas_com_permissao_352_do_retrato_mais_14_do_3a_
     # + 1 do #140 (ROTA_NOVA_ALIMENTOS_EXCLUIR, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #195 (ROTA_NOVA_ALIMENTOS_LISTA, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #216 (ROTA_NOVA_REGISTRO_EXERCICIO, so em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 + 7 + 7 + 1 + 1 == 388
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 36 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 + 7 + 7 + 1 + 1 + 1 == 389
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 37 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29
@@ -988,9 +990,10 @@ def test_o_conjunto_convertido_no_2d1_e_exatamente_o_das_39_rotas_dos_8_modulos(
             if modulo in MODULOS_2D1:
                 contagem[modulo] = contagem.get(modulo, 0) + len(route.methods - {"HEAD", "OPTIONS"})
     # Toda rota viva dos 8 modulos declara permissao (nenhuma ficou de fora do lote).
-    assert sum(contagem.values()) == 39, contagem
+    # #344: + POST /nutrition/plans/{plan_id}/comparison (nutrition_plans 12 -> 13): 40 vivas, 39 convertidas no 2D-1.
+    assert sum(contagem.values()) == 40, contagem
     assert contagem == {
-        "app.nutrition_plans": 12, "app.nutrition_plan_suggestion": 2, "app.nutrition_checkins": 6,
+        "app.nutrition_plans": 13, "app.nutrition_plan_suggestion": 2, "app.nutrition_checkins": 6,
         "app.nutrition_days": 7, "app.nutrition_dashboard": 2, "app.nutrition_meals": 6,
         "app.nutrition_meal_parse": 2, "app.nutrition_meal_photo": 2,
     }
@@ -1557,7 +1560,7 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
         - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA,
         ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR, *ROTAS_NOVAS_RECEITAS,
         *ROTAS_NOVAS_PERFIS_RESISTENCIA, ROTA_NOVA_REDUNDANCIA,
-        ROTA_NOVA_DIAGNOSTICO}
+        ROTA_NOVA_DIAGNOSTICO, ROTA_NOVA_COMPARACAO_PLANO}
     ):
         declaradas = vivas[rota]
         assert [(d[0], d[1]) for d in declaradas] == [ROTAS_NOVAS_POS_RETRATO[rota]], rota
@@ -1652,6 +1655,15 @@ def test_rota_nova_do_288_diagnostico_usa_a_permissao_de_leitura_do_modelo():
     assert [(d[0], d[1]) for d in vivas[ROTA_NOVA_DIAGNOSTICO]] == [("modelos.treino", "ver")]
     assert ROTA_NOVA_DIAGNOSTICO not in carregar_retrato()["rotas"]
     assert decisao_nova("admin", vivas[ROTA_NOVA_DIAGNOSTICO], EffectivePermissions(), "session") is False
+
+
+def test_rota_nova_do_344_comparacao_usa_a_permissao_da_previa_do_plano():
+    vivas = _declaradas_com_escopo()
+    previa = vivas["POST /nutrition/plans/{plan_id}/preview"]
+    assert [(d[0], d[1]) for d in vivas[ROTA_NOVA_COMPARACAO_PLANO]] == [("nutricao.plano", "editar")]
+    assert vivas[ROTA_NOVA_COMPARACAO_PLANO] == previa
+    assert ROTA_NOVA_COMPARACAO_PLANO not in carregar_retrato()["rotas"]
+    assert decisao_nova("autenticado", vivas[ROTA_NOVA_COMPARACAO_PLANO], EffectivePermissions(), "session") is False
 
 
 def test_rota_nova_do_216_tem_a_permissao_do_put_irmao_e_decisao_de_usuario_comum():
