@@ -562,37 +562,39 @@ EVENT_LLM_FALLBACK = "llm.fallback"
 
 
 def _dispatch(feature, timeout, *, user_id, prompt_version, openai_call, anthropic_call):
-    """Roda na Anthropic quando a feature esta ligada nela; se falhar com um
-    erro elegivel e o fallback estiver ligado, refaz na OpenAI (modelo OpenAI
-    da feature) com o tempo que sobrou - nunca menos que o minimo de uma
-    tentativa, para a Lambda ainda conseguir gravar a falha."""
+    """Roda no provedor primario da feature; se falhar com um erro elegivel e o
+    fallback para o OUTRO provedor estiver ligado, refaz nele com o tempo que
+    sobrou - nunca menos que o minimo de uma tentativa, para a Lambda ainda
+    conseguir gravar a falha. anthropic -> openai usa o modelo OpenAI da feature
+    (`fallback_eligible`); openai -> anthropic, o modelo Claude da feature
+    (`openai_fallback_eligible`). Se o fallback tambem falhar, o erro dele sobe."""
     from . import llm_anthropic
 
-    if llm_anthropic.provider_for(feature) != llm_anthropic.PROVIDER_ANTHROPIC:
-        return openai_call(timeout)
+    if llm_anthropic.provider_for(feature) == llm_anthropic.PROVIDER_ANTHROPIC:
+        primary, secondary = (llm_anthropic.PROVIDER_ANTHROPIC, anthropic_call), (PROVIDER_OPENAI, openai_call)
+        eligible = llm_anthropic.fallback_eligible
+    else:
+        primary, secondary = (PROVIDER_OPENAI, openai_call), (llm_anthropic.PROVIDER_ANTHROPIC, anthropic_call)
+        eligible = llm_anthropic.openai_fallback_eligible
     started = _monotonic()
     try:
-        return anthropic_call(timeout)
+        return primary[1](timeout)
     except OpenAIGenerationError as exc:
         fallback = llm_anthropic.fallback_provider_for(feature)
         remaining = timeout - (_monotonic() - started)
-        if (
-            fallback != PROVIDER_OPENAI
-            or not llm_anthropic.fallback_eligible(exc)
-            or remaining < TEXT_RETRY_MIN_ATTEMPT_SECONDS
-        ):
+        if fallback != secondary[0] or not eligible(exc) or remaining < TEXT_RETRY_MIN_ATTEMPT_SECONDS:
             raise
         log_event(
             EVENT_LLM_FALLBACK,
             feature=feature,
-            from_provider=llm_anthropic.PROVIDER_ANTHROPIC,
-            to_provider=PROVIDER_OPENAI,
+            from_provider=primary[0],
+            to_provider=secondary[0],
             code=exc.code,
             status=exc.status,
             prompt_version=prompt_version,
             user_id=user_id,
         )
-        return openai_call(remaining)
+        return secondary[1](remaining)
 
 
 def call_openai(

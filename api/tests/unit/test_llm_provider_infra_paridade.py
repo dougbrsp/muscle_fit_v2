@@ -1,8 +1,9 @@
 """Contrato infra x codigo do provedor LLM por feature (infra/llm_providers.tf).
 
 - a lista de features publicada pelo Terraform e a de `llm_anthropic.LLM_FEATURES`;
-- so as 6 features da virada vao para o Claude Haiku, com fallback por
-  feature; o resto segue `openai`;
+- so as features da virada vao para o Claude Haiku, com fallback por
+  feature para a OpenAI; a foto do prato (issue #326) e a inversa: OpenAI
+  primaria com fallback para o Claude; o resto segue `openai`;
 - a sugestao de metas (N6) le as envs de `meal_parse`, sem env propria, e nenhuma
   feature existente muda de provedor nem de modelo;
 - o ARN e a leitura do secret `musclefit/claude-api-key` vao SO para as 3
@@ -53,6 +54,10 @@ VIRADA_HAIKU = {
     "periodization": "low",
 }
 
+# Issue #326 (decisao do usuario de 2026-11-28): a foto do prato volta para a OpenAI
+# como primaria e usa o Claude (modelo/esforco acima, ainda publicados) so no fallback.
+PRIMARIO_INVERTIDO = {"meal_photo": "openai"}
+
 
 def _mapa_padrao(tf: str, variavel: str) -> dict[str, str]:
     if re.search(rf'variable "{variavel}" \{{[^}}]*?default\s*=\s*\{{\}}', tf):
@@ -65,10 +70,12 @@ def test_padrao_publicado_liga_so_as_da_virada_no_haiku_com_fallback_por_feature
     tf = _tf("llm_providers.tf")
     assert 'lookup(var.llm_provider_by_feature, f, "openai")' in tf
     provedores = _mapa_padrao(tf, "llm_provider_by_feature")
-    assert provedores == {f: "anthropic" for f in VIRADA_HAIKU}
+    assert provedores == {f: PRIMARIO_INVERTIDO.get(f, "anthropic") for f in VIRADA_HAIKU}
     assert _mapa_padrao(tf, "anthropic_model_by_feature") == {f: llm_anthropic.ANTHROPIC_MODEL_HAIKU for f in VIRADA_HAIKU}
     assert _mapa_padrao(tf, "anthropic_effort_by_feature") == VIRADA_HAIKU
-    assert _mapa_padrao(tf, "llm_fallback_provider_by_feature") == {f: "openai" for f in VIRADA_HAIKU}
+    assert _mapa_padrao(tf, "llm_fallback_provider_by_feature") == {
+        f: "anthropic" if f in PRIMARIO_INVERTIDO else "openai" for f in VIRADA_HAIKU
+    }
     assert set(VIRADA_HAIKU) <= set(llm_anthropic.LLM_FEATURES)
     # As que seguem na OpenAI nao recebem fallback: o global continua vazio.
     assert re.search(r'variable "llm_fallback_provider" \{.*?default\s+= ""', tf, re.S)
@@ -169,7 +176,8 @@ CONFIG_EM_PRODUCAO_ANTES_DO_N6 = {
     "periodization": ("anthropic", HAIKU, "low", "disabled", "openai"),
     "meal_parse": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
     "label_photo": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
-    "meal_photo": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    # Issue #326: OpenAI primaria, Claude no fallback.
+    "meal_photo": ("openai", HAIKU, "medium", "adaptive", "anthropic"),
     "workout_plan": ("openai", SONNET, "medium", "adaptive", None),
 }
 
@@ -259,8 +267,9 @@ def test_terraform_publica_entrada_explicita_e_nao_muda_as_envs_de_hoje():
     tf = _tf("llm_providers.tf")
     # Sem isto, `plan_suggestion = "openai"` nao publicaria nada e valeria a env de meal_parse.
     assert 'contains(keys(var.llm_provider_by_feature), f)' in tf
-    # Nos padroes, nenhum mapa tem entrada openai: o filtro novo nao publica nada a mais.
-    assert "openai" not in _mapa_padrao(tf, "llm_provider_by_feature").values()
+    # Nos padroes, so a foto do prato (#326, primario invertido) tem entrada openai explicita.
+    provedores = _mapa_padrao(tf, "llm_provider_by_feature")
+    assert {f for f, p in provedores.items() if p == "openai"} == set(PRIMARIO_INVERTIDO)
     assert not [nome for nome in _envs_publicadas(tf) if "PLAN_SUGGESTION" in nome]
     assert llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, "plan_suggestion") == "LLM_PROVIDER_PLAN_SUGGESTION"
 
