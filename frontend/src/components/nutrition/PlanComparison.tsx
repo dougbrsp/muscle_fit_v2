@@ -3,17 +3,9 @@
 import { Alert, Badge, Card, SegmentedControl, Stack, Table, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxis } from 'recharts';
-import {
-  CHART_AXIS_TICK,
-  CHART_COLORS,
-  CHART_GRID_STROKE,
-  CHART_LEGEND_STYLE,
-  CHART_TOOLTIP_CONTENT_STYLE,
-  CHART_TOOLTIP_ITEM_STYLE,
-  CHART_TOOLTIP_LABEL_STYLE,
-} from '@/components/charts/chartTheme';
+import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { formatNumberOrDash } from '@/lib/format';
 import { planComparisonQuery } from '@/lib/nutrition-api';
 import { DAY_KIND_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
@@ -21,6 +13,12 @@ import { weekdayShort } from '@/lib/nutrition-format';
 import type { NutritionComparedValue, NutritionComparisonContext, NutritionComparisonDay } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { BRAND } from '@/theme';
+
+// COD-14: recharts sob demanda; o placeholder tem a altura do gráfico (220).
+const PlanComparisonChart = dynamic(() => import('./PlanComparisonChart'), {
+  ssr: false,
+  loading: () => <ChartPlaceholder height={220} />,
+});
 
 // Rascunho × vigente (#344): só exibe valores, diferenças e percentuais prontos da API
 // (`domain/nutrition/plan_comparison`); nenhum cálculo aqui.
@@ -50,9 +48,7 @@ export function reasonText(reason: string): string {
   return `${base} (${ERROR_DETAILS[detalhe] ?? `código ${detalhe}`})`;
 }
 
-const HATCH_ID = 'hachura-rascunho';
 const LABEL_CURRENT = 'Vigente';
-const LABEL_DRAFT = 'Rascunho (hachurado)';
 
 function signed(value: number | null, digits: number): string {
   const texto = formatNumberOrDash(value, digits);
@@ -109,37 +105,7 @@ function WeekChart({ days, metric }: { days: NutritionComparisonDay[]; metric: (
   const rows = days.map((d) => ({ label: dayLabel(d.local_date), vigente: d.values[metric.key].current, rascunho: d.values[metric.key].draft }));
   return (
     <div role="img" aria-label={`Gráfico de barras de ${metric.label} por dia: ${LABEL_CURRENT} e Rascunho. Os mesmos números estão na tabela abaixo.`}>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 4 }} barGap={2}>
-          <defs>
-            <pattern id={HATCH_ID} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-              <rect width={6} height={6} fill={BRAND.bgSurface} />
-              <line x1={0} y1={0} x2={0} y2={6} stroke={CHART_COLORS.primary} strokeWidth={3} />
-            </pattern>
-          </defs>
-          <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={CHART_AXIS_TICK} interval={0} />
-          <YAxis tick={CHART_AXIS_TICK} width={44} />
-          <ReTooltip
-            contentStyle={CHART_TOOLTIP_CONTENT_STYLE}
-            labelStyle={CHART_TOOLTIP_LABEL_STYLE}
-            itemStyle={CHART_TOOLTIP_ITEM_STYLE}
-            formatter={(value, name) => [amount(value == null ? null : Number(value), metric), String(name)]}
-          />
-          <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-          <Bar dataKey="vigente" name={LABEL_CURRENT} fill={CHART_COLORS.compare} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />
-          <Bar
-            dataKey="rascunho"
-            name={LABEL_DRAFT}
-            fill={`url(#${HATCH_ID})`}
-            stroke={CHART_COLORS.primary}
-            strokeWidth={1.5}
-            radius={[4, 4, 0, 0]}
-            maxBarSize={22}
-            isAnimationActive={false}
-          />
-        </BarChart>
-      </ResponsiveContainer>
+      <PlanComparisonChart rows={rows} format={(value) => amount(value, metric)} />
     </div>
   );
 }
@@ -190,16 +156,31 @@ function WeekTable({ days, metric }: { days: NutritionComparisonDay[]; metric: (
 type Props = {
   plan: { id: number; updated_at: string | null };
   current: { id: number; updated_at: string | null };
+  /** Só busca depois que a prévia do rascunho carregou com sucesso. */
+  enabled?: boolean;
 };
 
 /** Bloco "Rascunho × Vigente" da prévia: aviso nos estados sem comparação, nunca esconde a prévia. */
-export function PlanComparison({ plan, current }: Props) {
-  const query = useQuery(planComparisonQuery(plan, current));
+export function PlanComparison({ plan, current, enabled = true }: Props) {
+  const query = useQuery(planComparisonQuery(plan, current, enabled));
   const [metricKey, setMetricKey] = useState<Metric>('kcal');
   const metric = METRICS.find((m) => m.key === metricKey) ?? METRICS[0];
+  // Resposta de outro vigente que não o da tela (a lista mudou no meio): refaz uma vez; se persistir, é erro.
+  const [refeitoPara, setRefeitoPara] = useState<number | null>(null);
+  const desatualizada = query.data?.current != null && query.data.current.plan.id !== current.id;
+  const refazer = desatualizada && refeitoPara !== current.id;
+  useEffect(() => {
+    if (!refazer) return;
+    setRefeitoPara(current.id);
+    void query.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refazer, current.id]);
 
-  if (query.isLoading) return <Text size="sm" c={BRAND.textMuted}>Comparando com o plano vigente...</Text>;
-  if (query.isError || !query.data) {
+  if (!enabled) return null;
+  if (query.isLoading || refazer || (desatualizada && query.isFetching)) {
+    return <Text size="sm" c={BRAND.textMuted}>Comparando com o plano vigente...</Text>;
+  }
+  if (query.isError || !query.data || desatualizada) {
     return (
       <Alert color="yellow" icon={<IconAlertTriangle size={16} />} data-testid="comparacao-erro">
         Não foi possível comparar com o plano vigente agora. A prévia abaixo continua válida.

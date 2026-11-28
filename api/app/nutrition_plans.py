@@ -170,9 +170,9 @@ _DELETE_DRAFT_SQL = f"DELETE FROM {TABLE} WHERE id = %s AND status = %s"
 # Trava da publicação: a linha vigente do aluno (a do UNIQUE da 078). Com
 # `FOR UPDATE`, duas publicações para o mesmo aluno se enfileiram aqui; a
 # segunda enxerga a vigente nova e responde 409 se a tela viu outra.
-_CURRENT_FOR_UPDATE_SQL = (
-    f"SELECT id FROM {TABLE} WHERE user_id = %s AND status = %s AND superseded_at IS NULL FOR UPDATE"
-)
+# Fonte única da leitura do vigente: sem trava para a comparação (#344), com `FOR UPDATE` para a publicação.
+_CURRENT_ID_SQL = f"SELECT id FROM {TABLE} WHERE user_id = %s AND status = %s AND superseded_at IS NULL"
+_CURRENT_FOR_UPDATE_SQL = _CURRENT_ID_SQL + " FOR UPDATE"
 _SUPERSEDE_SQL = (
     f"UPDATE {TABLE} SET superseded_at = %s "
     "WHERE user_id = %s AND status = %s AND superseded_at IS NULL AND id <> %s"
@@ -214,8 +214,6 @@ _ARCHIVE_SQL = (
 )
 _UNARCHIVE_SQL = f"UPDATE {TABLE} SET archived_at = NULL WHERE id = %s AND archived_at IS NOT NULL"
 _DRAFT_COUNT_SQL = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE user_id = %s AND status = %s"
-# Vigente (leitura, sem trava): a comparação (#344) só lê.
-_CURRENT_ID_SQL = f"SELECT id FROM {TABLE} WHERE user_id = %s AND status = %s AND superseded_at IS NULL"
 
 DRAFT = PlanStatus.DRAFT.value
 PUBLISHED = PlanStatus.PUBLISHED.value
@@ -723,6 +721,8 @@ def _side_preview(conn: Any, linha: dict[str, Any], aluno: int, usuario: dict[st
     try:
         return _plan_preview(conn, linha, aluno, usuario, hoje), None
     except HTTPException as erro:
+        if erro.status_code >= 500:
+            raise  # falha de infraestrutura (ex.: 503 sem tabelas) não é "falha do lado"
         detalhe = erro.detail if isinstance(erro.detail, dict) else {}
         return None, str(detalhe.get("error") or erro.status_code)
 

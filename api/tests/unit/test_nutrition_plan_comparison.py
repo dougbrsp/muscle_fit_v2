@@ -188,3 +188,51 @@ def test_permissao_alheio_e_404_como_na_preview(db):
     assert resposta.status_code == 404 and resposta.json()["detail"]["error"] == "plan_not_found"
     assert _comparar(_client("regular", user_id=ALUNO), rascunho).status_code == 200
     assert _comparar(_client(), 12345).status_code == 404
+
+
+def _com_previa_falhando(monkeypatch, falhas):
+    """`falhas`: {plano_id: (status, codigo)}; os demais usam a prévia real."""
+    original = plans_mod._plan_preview
+
+    def previa(conn, linha, aluno, usuario, hoje):
+        if int(linha["id"]) in falhas:
+            raise plans_mod._error(falhas[int(linha["id"])][0], falhas[int(linha["id"])][1], "x")
+        return original(conn, linha, aluno, usuario, hoje)
+
+    monkeypatch.setattr(plans_mod, "_plan_preview", previa)
+
+
+def test_falha_dos_dois_lados_vira_partial_sem_comparacao(db, monkeypatch):
+    vigente = db.add_plan(ALUNO, status="published", effective_from=HOJE - timedelta(days=10))
+    rascunho = db.add_plan(ALUNO)
+    _com_previa_falhando(monkeypatch, {vigente: (422, "nutrition_subject_incomplete"), rascunho: (422, "nutrition_subject_incomplete")})
+    corpo = _comparar(_client(), rascunho).json()
+    assert corpo["status"] == "partial" and corpo["comparison"] is None
+    assert corpo["reasons"] == ["current_failed:nutrition_subject_incomplete", "draft_failed:nutrition_subject_incomplete"]
+    assert corpo["current"] is None and corpo["draft"] is None
+
+
+def test_vigente_com_blocking_e_rascunho_ok(db, monkeypatch):
+    db.add_plan(ALUNO, status="published", effective_from=HOJE - timedelta(days=10))
+    rascunho = db.add_plan(ALUNO)
+    original = plans_mod._plan_preview
+
+    def previa(conn, linha, aluno, usuario, hoje):
+        corpo = original(conn, linha, aluno, usuario, hoje)
+        if int(linha["id"]) != rascunho:
+            corpo = {**corpo, "blocking": [{"code": "x"}]}
+        return corpo
+
+    monkeypatch.setattr(plans_mod, "_plan_preview", previa)
+    corpo = _comparar(_client(), rascunho).json()
+    assert corpo["status"] == "partial" and corpo["reasons"] == [pc.REASON_CURRENT_BLOCKING]
+    assert corpo["comparison"] is not None and corpo["draft"]["plan"]["id"] == rascunho
+
+
+@pytest.mark.parametrize("lado", ["draft", "current"])
+def test_5xx_de_um_lado_propaga_como_5xx(db, monkeypatch, lado):
+    vigente = db.add_plan(ALUNO, status="published", effective_from=HOJE - timedelta(days=10))
+    rascunho = db.add_plan(ALUNO)
+    _com_previa_falhando(monkeypatch, {(rascunho if lado == "draft" else vigente): (503, "nutrition_not_ready")})
+    resposta = _comparar(_client(), rascunho)
+    assert resposta.status_code == 503 and resposta.json()["detail"]["error"] == "nutrition_not_ready"

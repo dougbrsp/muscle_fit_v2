@@ -3,7 +3,10 @@ import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { apiFetch } from '@/lib/api';
 import { planComparisonQuery } from '@/lib/nutrition-api';
 import type { NutritionPlanComparison } from '@/lib/nutrition-types';
 import { PlanComparison, reasonText } from './PlanComparison';
@@ -82,7 +85,7 @@ function resposta(sobre: Partial<NutritionPlanComparison> = {}): NutritionPlanCo
   };
 }
 
-async function montar(data?: NutritionPlanComparison) {
+async function montar(data?: NutritionPlanComparison, enabled = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   if (data) client.setQueryData(planComparisonQuery(plano, vigente).queryKey, data);
   root = createRoot(host);
@@ -91,11 +94,16 @@ async function montar(data?: NutritionPlanComparison) {
       createElement(
         QueryClientProvider,
         { client },
-        createElement(MantineProvider, { env: 'test' }, createElement(PlanComparison, { plan: plano, current: vigente })),
+        createElement(MantineProvider, { env: 'test' }, createElement(PlanComparison, { plan: plano, current: vigente, enabled })),
       ),
     );
   });
 }
+
+const esperar = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 20));
+  });
 
 const texto = (sel: string) => (host.querySelector(sel)?.textContent ?? '').replace(/ /g, ' ');
 
@@ -174,5 +182,40 @@ describe('PlanComparison', () => {
     expect(planComparisonQuery({ ...plano, updated_at: 'x' }, vigente).queryKey).not.toEqual(k);
     expect(planComparisonQuery(plano, { ...vigente, updated_at: 'x' }).queryKey).not.toEqual(k);
     expect(planComparisonQuery(plano, { id: 4, updated_at: vigente.updated_at }).queryKey).not.toEqual(k);
+  });
+
+  it('o gráfico é carregado sob demanda: PlanComparison não importa recharts e o gráfico aparece depois', async () => {
+    const fonte = readFileSync(join(process.cwd(), 'src/components/nutrition/PlanComparison.tsx'), 'utf8');
+    expect(fonte).not.toMatch(/from 'recharts'/);
+    expect(fonte).toMatch(/dynamic\(/);
+    await montar(resposta());
+    await vi.waitFor(() => expect(host.querySelector('.recharts-responsive-container')).not.toBeNull());
+  });
+
+  it('enabled=false: não busca nem mostra nada', async () => {
+    vi.mocked(apiFetch).mockClear();
+    await montar(undefined, false);
+    await esperar();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(host.querySelector('[data-testid^="comparacao"]')).toBeNull();
+    expect(host.textContent).not.toMatch(/Comparando/);
+  });
+
+  it('resposta de outro vigente: mostra carregando, refaz a consulta uma vez e usa a nova resposta', async () => {
+    const velha = resposta({ current: { plan: { id: 4 } } as never });
+    const nova = resposta({ current: { plan: { id: vigente.id } } as never });
+    vi.mocked(apiFetch).mockReset().mockResolvedValueOnce(velha).mockResolvedValueOnce(nova);
+    await montar();
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="comparacao-plano"]')).not.toBeNull());
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('resposta de outro vigente que persiste na segunda consulta: aviso, sem tabelas e sem terceira consulta', async () => {
+    vi.mocked(apiFetch).mockReset().mockResolvedValue(resposta({ current: { plan: { id: 4 } } as never }));
+    await montar();
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="comparacao-erro"]')).not.toBeNull());
+    await esperar();
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('[data-testid="comparacao-plano"]')).toBeNull();
   });
 });

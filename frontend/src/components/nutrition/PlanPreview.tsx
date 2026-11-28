@@ -14,7 +14,6 @@ import { formatNumberOrDash } from '@/lib/format';
 import {
   nutritionErrorCode,
   nutritionErrorInfo,
-  nutritionKeys,
   planPreviewQuery,
   publishNutritionPlan,
   recomputeNutritionTargets,
@@ -35,7 +34,6 @@ import type {
   NutritionGoal,
   NutritionManualCheck,
   NutritionPlan,
-  NutritionPlanListResponse,
   NutritionProjection,
   NutritionPublishResponse,
   NutritionTargetDetail,
@@ -197,8 +195,8 @@ export function ManualCheckCard({ check }: { check: NutritionManualCheck }) {
 
 type Props = {
   plan: NutritionPlan;
-  /** Id da vigente que a tela mostra (null = nenhuma): vai na publicação (409 se mudou). */
-  currentPlanId: number | null;
+  /** Vigente que a tela mostra (null = nenhuma): o id vai na publicação (409 se mudou) e a versão na comparação. */
+  currentPlan: { id: number; updated_at: string | null } | null;
   onPublished: (result: NutritionPublishResponse) => void;
   /** Outra publicação mudou a vigente (409 `publish_conflict`): a tela recarrega a lista. */
   onConflict?: () => void;
@@ -210,21 +208,16 @@ type Props = {
  * vinda da API). Rascunho pode ser publicado; o vigente pode ter as metas
  * recalculadas de hoje em diante.
  */
-export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Props) {
+export function PlanPreview({ plan, currentPlan, onPublished, onConflict }: Props) {
   const qc = useQueryClient();
+  const currentPlanId = currentPlan?.id ?? null;
   const [confirmOpened, { open: openConfirm, close: closeConfirm }] = useDisclosure(false);
   const isDraft = plan.state === 'draft';
   const isCurrent = plan.state === 'current';
 
   const previewQuery = useQuery(planPreviewQuery(plan));
-  // Versão do vigente lida da lista de planos em cache (a tela que a carrega re-renderiza esta prévia quando ela muda).
-  const currentPlan =
-    isDraft && currentPlanId != null && currentPlanId !== plan.id
-      ? (qc
-          .getQueriesData<NutritionPlanListResponse>({ queryKey: nutritionKeys.plans(plan.user_id) })
-          .flatMap(([, data]) => data?.items ?? [])
-          .find((item) => item.id === currentPlanId) ?? { id: currentPlanId, updated_at: null })
-      : null;
+  // O vigente vem da lista que a tela já carrega (sem ler o cache aqui).
+  const comparar = isDraft && currentPlan != null && currentPlan.id !== plan.id ? currentPlan : null;
 
   const publishMutation = useMutation({
     mutationFn: () => publishNutritionPlan(plan.id, currentPlanId, plan.updated_at),
@@ -307,7 +300,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
           ))}
       </Stack>
       <NutritionLimitations items={withoutDayWarnings(preview.limitations, diasExibidos)} title="Avisos do motor nesta semana" />
-      {currentPlan && <PlanComparison plan={plan} current={currentPlan} />}
+      {comparar && <PlanComparison plan={plan} current={comparar} enabled={previewQuery.isSuccess} />}
 
       {isDraft && (
         <Group

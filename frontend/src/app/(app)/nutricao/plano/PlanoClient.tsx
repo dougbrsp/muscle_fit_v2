@@ -112,7 +112,7 @@ function PlanManager({
   const plans = plansQuery.data?.items ?? [];
   const selected = plans.find((plan) => plan.id === selectedId) ?? null;
   // A vigente que a tela mostra: vai na publicação (concorrência otimista, 409 se mudou).
-  const currentPlanId = plans.find((plan) => plan.state === 'current')?.id ?? null;
+  const currentPlan = plans.find((plan) => plan.state === 'current') ?? null;
 
   return (
     <Stack gap="lg">
@@ -230,7 +230,7 @@ function PlanManager({
           <SelectedPlanSummary plan={selected} />
           <PlanPreview
             plan={selected}
-            currentPlanId={currentPlanId}
+            currentPlan={currentPlan ? { id: currentPlan.id, updated_at: currentPlan.updated_at } : null}
             onConflict={() => qc.invalidateQueries({ queryKey: nutritionKeys.plans(selected.user_id) })}
             onPublished={async (result) => {
               setSelectedId(result.plan.id);
