@@ -267,6 +267,46 @@ export type NutritionPlanPreview = {
   manual_check: NutritionManualCheck | null;
 };
 
+/** Um valor comparado (`plan_comparison.compare_value`): `diff` = rascunho − vigente e `diff_percent` sobre o vigente, prontos da API. */
+export type NutritionComparedValue = {
+  current: number | null;
+  draft: number | null;
+  diff: number | null;
+  diff_percent: number | null;
+};
+
+export type NutritionComparisonContext = {
+  day_kind: NutritionCode | null;
+  is_training_day: boolean | null;
+  carb_cycle_policy: NutritionCode | null;
+};
+
+/** Um dia comparado (`plan_comparison.compare_day`). */
+export type NutritionComparisonDay = {
+  local_date: string | null;
+  values: Record<'kcal' | 'protein_g' | 'carbs_g' | 'fat_g', NutritionComparedValue>;
+  current_context: NutritionComparisonContext;
+  draft_context: NutritionComparisonContext;
+  differs: boolean;
+};
+
+/** `POST /nutrition/plans/{id}/comparison` (#344): prévia do rascunho × a do vigente, mesma semana, sem gravar. */
+export type NutritionPlanComparison = {
+  status: 'ok' | 'no_current' | 'same_plan' | 'partial';
+  /** Códigos (`current_failed:<cod>`, `draft_failed:<cod>`, `current_blocking`, `draft_blocking`, `reference_date_mismatch`). */
+  reasons: string[];
+  today: string;
+  current: NutritionPlanPreview | null;
+  draft: NutritionPlanPreview | null;
+  comparison: {
+    today: string | null;
+    target: NutritionComparisonDay;
+    days: NutritionComparisonDay[];
+    only_current: string[];
+    only_draft: string[];
+  } | null;
+};
+
 /** `phases.GoalProjection.to_dict` + os motivos rotulados. */
 export type NutritionProjection = {
   /** Código de `PROJECTION_STATUS_OPTIONS`. */

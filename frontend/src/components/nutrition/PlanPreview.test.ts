@@ -4,7 +4,7 @@ import { createElement, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NutritionTargetDetail } from '@/lib/nutrition-types';
-import { planPreviewQuery } from '@/lib/nutrition-api';
+import { nutritionKeys, planComparisonQuery, planPreviewQuery } from '@/lib/nutrition-api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PlanPreview, TodayTargetCard } from './PlanPreview';
 
@@ -261,6 +261,43 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
     const texto = host.textContent ?? '';
     expect(texto.match(/Carbo limitado\./g)).toHaveLength(1); // só no dia exibido
     expect(texto).toContain('Manual ignora compensação.'); // dia 23 fora de publish_days: fica na lista geral
+  });
+
+  it('comparação com o vigente: só no rascunho com vigente diferente, antes do botão Publicar', async () => {
+    const vigente = { id: 3, user_id: 1, updated_at: 'v1', state: 'current' };
+    const montarCom = async (plano: never, currentPlanId: number | null, comComparacao: boolean) => {
+      const previa = {
+        plan: plano, today: '2026-11-24', publish_days: ['2026-11-24'], limitations: [], blocking: [], can_publish: true, manual_check: null,
+        subject: {}, goal: {}, projection: { status: 'x', reason_items: [] }, target: alvo({}), warnings: [], week: [],
+      };
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+      client.setQueryData(planPreviewQuery(plano).queryKey, previa);
+      client.setQueryData(nutritionKeys.plansList(1, false), { user: {}, items: [plano, vigente] });
+      if (comComparacao) {
+        client.setQueryData(planComparisonQuery(plano, vigente).queryKey, { status: 'no_current', reasons: [], today: '2026-11-24', current: null, draft: null, comparison: null });
+      }
+      root = createRoot(host);
+      await act(async () => {
+        root!.render(
+          createElement(
+            QueryClientProvider,
+            { client },
+            createElement(MantineProvider, { env: 'test' }, createElement(PlanPreview, { plan: plano, currentPlanId, onPublished: () => {} })),
+          ),
+        );
+      });
+    };
+    const rascunho = { id: 9, user_id: 1, updated_at: 't', state: 'draft' } as never;
+    await montarCom(rascunho, 3, true);
+    const aviso = host.querySelector('[data-testid="comparacao-sem-vigente"]');
+    expect(aviso).not.toBeNull();
+    const publicar = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Publicar plano')!;
+    expect(aviso!.compareDocumentPosition(publicar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await act(async () => root?.unmount());
+    host.innerHTML = '';
+    await montarCom({ ...vigente } as never, 3, false);
+    expect(host.textContent).not.toMatch(/Comparando|vigente para comparar|Comparação com o plano vigente/);
   });
 
   it('o card Plano e a prévia compartilham a mesma queryKey (um só POST)', () => {
