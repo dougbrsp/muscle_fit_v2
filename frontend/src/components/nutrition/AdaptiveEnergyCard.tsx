@@ -60,8 +60,8 @@ export function AdaptiveEnergyStatus({ state: s }: { state: AdaptiveEnergyState 
 }
 
 /**
- * Gasto adaptativo em sombra: só exibe o que o motor calculou (`adaptive_energy` do dashboard).
- * Nenhuma meta usa este valor. Sem o bloco, nada aparece; indisponível, só um aviso curto.
+ * Gasto adaptativo: só exibe o que o motor calculou (`adaptive_energy` do dashboard). Em sombra ou em uso no plano
+ * conforme `energy.applied` (título e selo seguem o mesmo campo). Sem o bloco, nada aparece; indisponível, só um aviso curto.
  */
 export function AdaptiveEnergyCard({ energy }: { energy: AdaptiveEnergy | null | undefined }) {
   const [aberto, { toggle }] = useDisclosure(false);
@@ -70,7 +70,7 @@ export function AdaptiveEnergyCard({ energy }: { energy: AdaptiveEnergy | null |
   const titulo = (
     <Group justify="space-between" gap="xs" wrap="wrap">
       <Title order={4} c={BRAND.textPrimary}>
-        Gasto adaptativo (em sombra)
+        {energy.applied ? 'Gasto adaptativo' : 'Gasto adaptativo (em sombra)'}
       </Title>
       <Badge color="gray" variant="light" data-testid="adaptativo-selo">
         {energy.applied ? 'Em uso no seu plano' : 'Em sombra: ainda não altera suas metas'}
