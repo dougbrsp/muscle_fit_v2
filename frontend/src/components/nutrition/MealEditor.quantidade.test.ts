@@ -109,6 +109,13 @@ async function digitar(el: HTMLInputElement, valor: string) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
+async function colar(el: HTMLInputElement, texto: string) {
+  await act(async () => {
+    const ev = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', { value: { getData: () => texto } });
+    el.dispatchEvent(ev);
+  });
+}
 const focar = async (el: HTMLInputElement) => act(async () => el.focus());
 const desfocar = async (el: HTMLInputElement) => act(async () => el.blur());
 const botaoSalvar = () => Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.includes('Salvar refeição'))!;
@@ -128,6 +135,67 @@ describe('MealEditor: quantidade confirmada só no blur', () => {
     expect(previewMeal.mock.calls[0][0].items[0].quantity).toBe(200);
     expect(campo().value).toBe('200');
     expect(host.querySelector('[data-testid="motor"]')).not.toBeNull();
+  });
+
+  it('teclado decimal: inputmode="decimal"; 1,5 digitado grava 1.5 no preview e no salvar; 1, intermediário não dá erro em foco', async () => {
+    const el = campo();
+    expect(el.getAttribute('inputmode')).toBe('decimal');
+    await focar(el);
+    await digitar(el, '1,');
+    await esperar();
+    expect(host.textContent).not.toContain('Informe a quantidade');
+    expect(previewMeal).not.toHaveBeenCalled();
+    await digitar(campo(), '1,5');
+    expect(campo().value).toBe('1,5');
+    await desfocar(campo());
+    await esperar();
+    expect(host.textContent).not.toContain('Informe a quantidade');
+    expect(previewMeal).toHaveBeenCalledTimes(1);
+    expect(previewMeal.mock.calls[0][0].items[0].quantity).toBe(1.5);
+    expect(campo().value).toBe('1,5');
+    await act(async () => botaoSalvar().click());
+    await esperar(50);
+    expect(createMeal.mock.calls[0][0].items[0].quantity).toBe(1.5);
+  });
+
+  it.each([['1.5', 1.5, '1,5'], ['1,5', 1.5, '1,5'], ['0.25', 0.25, '0,25'], ['120', 120, '120']])(
+    'colar %s grava %s (não 10x): preview após blur e salvar',
+    async (colado, esperado, exibido) => {
+      const el = campo();
+      await focar(el);
+      await colar(el, colado);
+      expect(campo().value).toBe(exibido);
+      await desfocar(campo());
+      await esperar();
+      expect(previewMeal.mock.calls[0][0].items[0].quantity).toBe(esperado);
+      await act(async () => botaoSalvar().click());
+      await esperar(50);
+      expect(createMeal.mock.calls[0][0].items[0].quantity).toBe(esperado);
+    },
+  );
+
+  it('colar texto não reconhecido (abc, milhar, mais de 3 casas) é bloqueado e não altera o valor', async () => {
+    const el = campo();
+    await focar(el);
+    for (const texto of ['abc', '1.234,5', '1,234.5', '0.12345']) {
+      const ev = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'clipboardData', { value: { getData: () => texto } });
+      await act(async () => {
+        el.dispatchEvent(ev);
+      });
+      expect(ev.defaultPrevented).toBe(true);
+      expect(campo().value).toBe('150');
+    }
+    expect(campo().value).toBe('150');
+  });
+
+  it('0,25 e salvar com o campo em foco gravam 0.25', async () => {
+    const el = campo();
+    await focar(el);
+    await digitar(el, '0,25');
+    await act(async () => botaoSalvar().click());
+    await esperar(50);
+    expect(createMeal.mock.calls[0][0].items[0].quantity).toBe(0.25);
   });
 
   it('o bloco do motor continua visível enquanto o novo preview carrega', async () => {
