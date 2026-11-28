@@ -63,13 +63,10 @@ function Shell({ children }: { children: ReactNode }) {
   const keyboardOpen = useKeyboardOpen();
   const scrollPositions = useRef(new Map<string, number>());
 
-  const groups = useMemo(
-    () =>
-      buildMoreGroups(
-        mobileMainNavItems(navVisibilityFromPermissions(userQuery.data)),
-      ),
-    [userQuery.data],
-  );
+  const groups = useMemo(() => {
+    const vis = navVisibilityFromPermissions(userQuery.data);
+    return buildMoreGroups(mobileMainNavItems(vis), vis);
+  }, [userQuery.data]);
 
   // Navegou (inclusive voltar/avançar do navegador): a folha fecha.
   useEffect(() => {

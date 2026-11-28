@@ -351,3 +351,33 @@ describe('voltar do cabeçalho com o editor de refeição dirigido por ?nova=1',
     expect(voltarDoEditorNova('/nutricao/', 'nova=1', true)).toBe('back');
   });
 });
+
+describe('Mais: Nutrição expansível com as seções', () => {
+  const semDash: Perms = JSON.parse(JSON.stringify(plainPerms));
+  delete semDash.dashboards;
+  const visSemDash = navVisibilityFromPermissions({ permissions: semDash, intervals_configured: false });
+  const items = (v: typeof admin, passVis = true) =>
+    buildMoreGroups(mobileMainNavItems(v), passVis ? v : undefined).flatMap((g) => g.items);
+  const filhos = (v: typeof admin, passVis = true) =>
+    items(v, passVis).find((i) => i.href === '/nutricao')?.children?.map((c) => c.href);
+  const SEM_PAINEL = [
+    '/nutricao', '/nutricao/plano', '/nutricao/checkin', '/nutricao/alimentos',
+    '/nutricao/receitas', '/nutricao/favoritos',
+  ];
+
+  it('com dashboards/ver, as seções incluem o Painel', () => {
+    expect(filhos(plain)).toEqual([...SEM_PAINEL, '/dashboard/nutricao']);
+  });
+  it('sem dashboards/ver ou sem visibilidade, sem o Painel', () => {
+    expect(filhos(visSemDash)).toEqual(SEM_PAINEL);
+    expect(filhos(plain, false)).toEqual(SEM_PAINEL);
+  });
+  it('só a Nutrição tem filhos; os demais itens seguem iguais', () => {
+    const antes = buildMoreGroups(mobileMainNavItems(admin));
+    const depois = buildMoreGroups(mobileMainNavItems(admin), admin);
+    expect(depois.map((g) => g.items.map((i) => i.href))).toEqual(antes.map((g) => g.items.map((i) => i.href)));
+    for (const item of items(admin)) {
+      if (item.href !== '/nutricao') expect(item.children, item.href).toBeUndefined();
+    }
+  });
+});

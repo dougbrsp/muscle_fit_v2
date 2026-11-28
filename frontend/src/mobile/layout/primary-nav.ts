@@ -18,6 +18,7 @@ import {
   type NavItem,
   type NavVisibility,
 } from '@/lib/nav-items';
+import { NUTRICAO_PAINEL_HREF, NUTRICAO_SECOES } from './nutricao-secoes';
 
 /**
  * Navegação do iPhone (mobile v2, ADR 0004). Funções puras, testáveis sem DOM.
@@ -174,7 +175,13 @@ export function isMoreActive(
 // Evolução (hub) e Mais (folha): grupos de apresentação
 // ---------------------------------------------------------------------------
 
-export type NavGroup = { title: string; items: readonly NavItem[] };
+/** Subitem de um item do "Mais" (ex.: seções da Nutrição); só navegação, sem ícone. */
+export type NavChild = { href: string; label: string };
+
+/** Item com `children` vira expansível na folha "Mais". */
+export type GroupNavItem = NavItem & { children?: readonly NavChild[] };
+
+export type NavGroup = { title: string; items: readonly GroupNavItem[] };
 
 type GroupLayout = readonly { title: string; hrefs: readonly string[] }[];
 
@@ -250,13 +257,23 @@ export function buildEvolucaoGroups(
 /**
  * Grupos da folha "Mais": tudo que o iPhone alcança e não é aba nem hub.
  * Itens sem grupo definido caem em "Outros" (nenhuma rota fica inacessível).
+ * A Nutrição leva as próprias seções como filhos; o Painel só com `canSeeDashboard`
+ * (sem `visibility`, fail-closed: sem Painel).
  */
-export function buildMoreGroups(visibleMain: readonly MainNavItem[]): readonly NavGroup[] {
+export function buildMoreGroups(
+  visibleMain: readonly MainNavItem[],
+  visibility?: NavVisibility,
+): readonly NavGroup[] {
   const tabHrefs = new Set(PRIMARY_TABS.map((tab) => normalizePath(tab.href)));
-  const pool = new Map<string, NavItem>([[PERFIL_ITEM.href, PERFIL_ITEM]]);
+  const pool = new Map<string, GroupNavItem>([[PERFIL_ITEM.href, PERFIL_ITEM]]);
+  const painel = visibility !== undefined && canSeeDashboard(visibility);
   for (const item of mobileCandidates(visibleMain)) {
     if (tabHrefs.has(normalizePath(item.href)) || EVOLUCAO_EXTRA_PATHS.includes(item.href)) continue;
-    pool.set(item.href, item);
+    const children =
+      item.href === '/nutricao'
+        ? NUTRICAO_SECOES.filter((s) => painel || s.href !== NUTRICAO_PAINEL_HREF)
+        : undefined;
+    pool.set(item.href, children ? { ...item, children } : item);
   }
   const { groups, used } = groupBy(MORE_LAYOUT, pool);
   const rest = [...pool.values()].filter((item) => !used.has(item.href));

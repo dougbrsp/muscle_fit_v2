@@ -1,19 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { NUTRICAO_SECOES as SECOES, type NutricaoSecao } from '../../layout/nutricao-secoes';
 import { BottomSheet, ListGroup, ListRow } from '../../ui';
 
-const SECOES = [
-  { href: '/nutricao', label: 'Diário' },
-  { href: '/nutricao/plano', label: 'Plano' },
-  { href: '/nutricao/checkin', label: 'Check-in' },
-  { href: '/nutricao/alimentos', label: 'Alimentos' },
-  { href: '/nutricao/receitas', label: 'Receitas' },
-  { href: '/nutricao/favoritos', label: 'Preferidos' },
-  { href: '/dashboard/nutricao', label: 'Painel' },
-] as const;
-
-export type NutricaoSecao = (typeof SECOES)[number]['href'];
+export type { NutricaoSecao };
 
 /** Seção atual da Nutrição numa linha só; o toque abre a lista das demais (substitui a faixa de botões do desktop). */
 export function NutricaoNav({ active }: { active: NutricaoSecao }) {
